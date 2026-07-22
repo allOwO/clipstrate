@@ -8,11 +8,35 @@ import AppKit
 final class StatusItemController {
     private let statusItem: NSStatusItem
     private let menu: NSMenu
+    private var attentionDot: CALayer?
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         menu = StatusItemController.makeMenu()
         configureButton()
+    }
+
+    /// 权限缺失时在图标右上角标黄点（01 §8）。保持底图为模板图以正确适配深浅色，
+    /// 黄点用彩色 layer 叠加。
+    func setNeedsAttention(_ on: Bool) {
+        guard let button = statusItem.button else { return }
+        if on {
+            button.wantsLayer = true
+            let dot = attentionDot ?? CALayer()
+            let size: CGFloat = 5
+            let bounds = button.bounds
+            dot.frame = CGRect(x: bounds.maxX - size - 1, y: bounds.maxY - size - 2,
+                               width: size, height: size)
+            dot.cornerRadius = size / 2
+            dot.backgroundColor = NSColor.systemYellow.cgColor
+            if attentionDot == nil {
+                button.layer?.addSublayer(dot)
+                attentionDot = dot
+            }
+        } else {
+            attentionDot?.removeFromSuperlayer()
+            attentionDot = nil
+        }
     }
 
     // 状态项随 App 生命周期常驻，由 AppDelegate 单一持有；App 退出时系统回收，

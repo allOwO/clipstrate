@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var historyStore: HistoryStore?
     private var blobStore: BlobStore?
     private var clipboardMonitor: ClipboardMonitor?
+    private var onboardingController: OnboardingController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
@@ -19,6 +20,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItemController = StatusItemController()
         startCapture()
+
+        if !Settings.onboardingDone {
+            showOnboarding()
+        }
+        refreshAttention()
 
         Log.app.info("ChopClip launched (v\(Bundle.main.shortVersion, privacy: .public))")
     }
@@ -36,5 +42,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             Log.app.error("capture 初始化失败：\(String(describing: error), privacy: .public)")
         }
+    }
+
+    private func showOnboarding() {
+        let controller = OnboardingController { [weak self] in
+            Settings.setOnboardingDone(true)
+            self?.refreshAttention()
+            self?.onboardingController = nil
+        }
+        onboardingController = controller
+        controller.show()
+    }
+
+    /// 权限齐全则去掉黄点，缺失则标黄点（01 §8）。
+    private func refreshAttention() {
+        let ok = PrivacyGate.isPasteboardAllowed && AXPermission.isTrusted
+        statusItemController?.setNeedsAttention(!ok)
     }
 }
