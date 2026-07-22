@@ -155,18 +155,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private static func command(for event: NSEvent) -> SummonPanelCommand? {
-        switch event.keyCode {
-        case 123: return .moveLeft
-        case 124: return .moveRight
-        case 125: return .moveDown
-        case 126: return .moveUp
-        case 36, 76:
-            return event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option)
-                ? .activatePlainText : .activate
-        case 48: return .openChop
-        case 53: return .escape
-        default: return nil
-        }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return SummonKeyMap.command(
+            keyCode: event.keyCode,
+            option: flags.contains(.option),
+            command: flags.contains(.command),
+            digitModifier: Settings.digitModifier
+        )
     }
 
     // MARK: - 失焦即关

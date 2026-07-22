@@ -46,7 +46,7 @@ final class SummonPanelInteractionTests: XCTestCase {
         var calls: [(String, Bool)] = []
         let model = SummonPanelModel(
             historyStore: nil,
-            pasteHandler: { calls.append(($0.contentHash, $1)) },
+            pasteHandler: { item, plainText, _ in calls.append((item.contentHash, plainText)) },
             initialItems: [item("a"), item("b")]
         )
 
@@ -65,5 +65,48 @@ final class SummonPanelInteractionTests: XCTestCase {
         XCTAssertTrue(model.handle(.escape))
         XCTAssertEqual(model.focus, .card)
         XCTAssertFalse(model.handle(.escape))
+    }
+
+    func testDigitDirectPasteSelectsItemWithPressSource() {
+        var calls: [(String, Bool, SummonPasteSource)] = []
+        let model = SummonPanelModel(
+            historyStore: nil,
+            pasteHandler: { calls.append(($0.contentHash, $1, $2)) },
+            initialItems: [item("a"), item("b"), item("c")]
+        )
+        model.beginPresentation()
+
+        XCTAssertTrue(model.handle(.digit(2)))
+        XCTAssertEqual(model.selectedIndex, 1)
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.0, "b")
+        XCTAssertEqual(calls.first?.1, false)
+        XCTAssertEqual(calls.first?.2, .press)
+    }
+
+    func testDigitOutOfRangeIsConsumedButDoesNotPaste() {
+        var count = 0
+        let model = SummonPanelModel(
+            historyStore: nil,
+            pasteHandler: { _, _, _ in count += 1 },
+            initialItems: [item("a"), item("b")]
+        )
+        model.beginPresentation()
+
+        XCTAssertTrue(model.handle(.digit(5)), "越界数字仍被面板消费，不透传")
+        XCTAssertEqual(count, 0)
+    }
+
+    func testEnterUsesReturnSource() {
+        var sources: [SummonPasteSource] = []
+        let model = SummonPanelModel(
+            historyStore: nil,
+            pasteHandler: { _, _, source in sources.append(source) },
+            initialItems: [item("a")]
+        )
+        model.beginPresentation()
+
+        model.handle(.activate)
+        XCTAssertEqual(sources, [.return])
     }
 }

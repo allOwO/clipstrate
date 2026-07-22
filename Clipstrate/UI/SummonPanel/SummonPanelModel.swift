@@ -91,20 +91,31 @@ final class SummonPanelModel: ObservableObject {
         case .activate:
             performFocusedAction()
         case .activatePlainText:
-            pasteSelected(plainText: true)
+            pasteSelected(plainText: true, source: .return)
         case .openChop:
             presentSelectedChopOverlay()
+        case .digit(let oneBased):
+            pasteDigit(oneBased)
         case .escape:
             break
         }
         return true
     }
 
+    /// 数字直贴：选中第 N 条并粘贴（走「按下后（数字键）」设置）。越界忽略。
+    private func pasteDigit(_ oneBased: Int) {
+        let index = oneBased - 1
+        guard items.indices.contains(index) else { return }
+        selectedIndex = index
+        focus = .card
+        pasteSelected(plainText: false, source: .press)
+    }
+
     func activateCard(at index: Int) {
         guard items.indices.contains(index) else { return }
         if index == selectedIndex {
             focus = .card
-            pasteSelected(plainText: false)
+            pasteSelected(plainText: false, source: .return)
         } else {
             selectedIndex = index
             focus = .card
@@ -114,7 +125,7 @@ final class SummonPanelModel: ObservableObject {
     func activateAction(_ index: Int) {
         guard selectedItem?.kind == .text, (0...1).contains(index) else { return }
         focus = .action(index)
-        index == 0 ? pasteSelected(plainText: true) : presentSelectedChopOverlay()
+        index == 0 ? pasteSelected(plainText: true, source: .return) : presentSelectedChopOverlay()
     }
 
     func presentChopOverlay(for item: ClipItem) {
@@ -181,18 +192,18 @@ final class SummonPanelModel: ObservableObject {
     private func performFocusedAction() {
         switch focus {
         case .card:
-            pasteSelected(plainText: false)
+            pasteSelected(plainText: false, source: .return)
         case .action(0):
-            pasteSelected(plainText: true)
+            pasteSelected(plainText: true, source: .return)
         case .action:
             presentSelectedChopOverlay()
         }
     }
 
-    private func pasteSelected(plainText: Bool) {
+    private func pasteSelected(plainText: Bool, source: SummonPasteSource) {
         guard let item = selectedItem else { return }
         if plainText, item.kind != .text { return }
-        pasteHandler?(item, plainText)
+        pasteHandler?(item, plainText, source)
     }
 
     private func presentSelectedChopOverlay() {

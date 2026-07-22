@@ -32,15 +32,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pasteService = paste
         panelController = panel
         hotkeyCenter.setSummonHandler { [weak panel] in panel?.toggle() }
-        panel.setPasteHandler { [weak panel, weak paste] item, plainText in
+        panel.setPasteHandler { [weak panel, weak paste] item, plainText, source in
             Task { @MainActor [weak panel, weak paste] in
                 guard let paste else { return }
+                // 数字键走「按下后」设置，⏎/点击走「双击/回车」设置（01 §3.5）。
+                let action = source == .press ? Settings.pressAction : Settings.returnAction
                 let result = await paste.perform(
                     item: item,
                     plainText: plainText || Settings.plainTextDefault,
-                    action: Settings.returnAction
+                    action: action
                 )
                 if result.didWritePasteboard, Settings.autoClose { panel?.hide() }
+                switch result {
+                case .copiedNeedsManualPaste: ToastPresenter.shared.show("已复制，请 ⌘V 粘贴")
+                case .copied: ToastPresenter.shared.show("已复制 ✓")
+                case .unavailable: ToastPresenter.shared.show("无法粘贴该条目")
+                case .pasted: break
+                }
             }
         }
 
@@ -85,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         janitorTask?.cancel()
         janitorTask = nil
         panelController?.tearDown()
+        ToastPresenter.shared.tearDown()
     }
 
     private func showOnboarding() {
