@@ -67,10 +67,27 @@ actor ClipboardMonitor {
 
     private func persist(_ clip: CapturedClip) async {
         do {
+            var item = clip.item
             if let data = clip.blobData, let name = clip.item.blobPath {
                 try blobs.writeBlob(data, name: name)
             }
-            let saved = try await store.upsert(clip.item)
+            if item.kind == .image, let data = clip.blobData {
+                let artifact = await Task.detached(priority: .utility) {
+                    ImageThumbnailer.makeJPEG(from: data)
+                }.value
+                if let artifact {
+                    let name = artifact.fileName(
+                        contentHash: item.contentHash,
+                        originalByteSize: item.byteSize
+                    )
+                    do {
+                        item.thumbPath = try blobs.writeThumb(artifact.jpegData, name: name)
+                    } catch {
+                        Log.capture.error("thumbnail persist failed: \(String(describing: error), privacy: .public)")
+                    }
+                }
+            }
+            let saved = try await store.upsert(item)
             Log.capture.debug("captured id=\(saved.id ?? -1, privacy: .public) kind=\(saved.kind.rawValue, privacy: .public)")
         } catch {
             Log.capture.error("persist failed: \(String(describing: error), privacy: .public)")

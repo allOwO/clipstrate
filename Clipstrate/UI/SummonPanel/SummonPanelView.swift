@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// 唤出面板内容（01 §3.2 变体 C）：无外层容器、独立玻璃卡片、底边对齐。
-/// 键盘/鼠标焦点行为由 T1.4 接入；图片缩略图、文件图标与富文本渲染由 T1.6 替换占位内容。
+/// 卡片视觉、两层焦点与三类内容渲染集中在此；搜索态由 T1.9 继续扩展。
 struct SummonPanelView: View {
     @ObservedObject var model: SummonPanelModel
 
@@ -37,6 +37,7 @@ struct SummonPanelView: View {
                                     isSelected: index == model.selectedIndex,
                                     isActionLayer: index == model.selectedIndex && model.focus != .card,
                                     focusedActionIndex: index == model.selectedIndex ? model.focus.actionIndex : nil,
+                                    blobStore: model.blobStore,
                                     presentationEpoch: model.presentationEpoch,
                                     isPanelPresented: model.isPanelPresented,
                                     onActivate: { model.activateCard(at: index) },
@@ -86,6 +87,7 @@ private struct SummonCardView: View {
     let isSelected: Bool
     let isActionLayer: Bool
     let focusedActionIndex: Int?
+    let blobStore: BlobStore?
     let presentationEpoch: Int
     let isPanelPresented: Bool
     let onActivate: () -> Void
@@ -179,28 +181,21 @@ private struct SummonCardView: View {
     private var content: some View {
         switch item.kind {
         case .text:
-            Text(presentation.body)
-                .font(isSelected ? DS.Typography.cardBody : DS.Typography.cardBodyCompact)
-                .foregroundStyle(.primary)
-                .lineSpacing(2)
-                .lineLimit(isSelected ? 6 : 4)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        case .image, .file:
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(DS.Colors.placeholderFill)
-                    Image(systemName: presentation.symbolName)
-                        .font(.system(size: isSelected ? 38 : 30, weight: .light))
-                        .foregroundStyle(.secondary)
-                }
-                Text(presentation.body)
-                    .font(DS.Typography.cardMeta)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            TextCardContent(
+                item: item,
+                presentation: presentation,
+                isSelected: isSelected,
+                blobStore: blobStore
+            )
+        case .image:
+            ImageCardContent(
+                item: item,
+                presentation: presentation,
+                isSelected: isSelected,
+                blobStore: blobStore
+            )
+        case .file:
+            FileCardContent(item: item, presentation: presentation, isSelected: isSelected)
         }
     }
 
@@ -242,14 +237,155 @@ private struct SummonCardView: View {
     }
 }
 
+private struct TextCardContent: View {
+    let item: ClipItem
+    let presentation: ClipCardPresentation
+    let isSelected: Bool
+    let blobStore: BlobStore?
+
+    @State private var richText: AttributedString?
+
+    var body: some View {
+        Group {
+            if let richText {
+                Text(richText)
+            } else {
+                Text(presentation.body)
+            }
+        }
+        .font(isSelected ? DS.Typography.cardBody : DS.Typography.cardBodyCompact)
+        .foregroundStyle(.primary)
+        .lineSpacing(2)
+        .lineLimit(isSelected ? 6 : 4)
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task(id: item.blobPath) {
+            guard item.isRich, let blobStore else { return }
+            richText = await CardAssetLoader.shared.richText(for: item, store: blobStore)
+        }
+    }
+}
+
+private struct ImageCardContent: View {
+    let item: ClipItem
+    let presentation: ClipCardPresentation
+    let isSelected: Bool
+    let blobStore: BlobStore?
+
+    @State private var thumbnail: CGImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(DS.Colors.placeholderFill)
+                if let thumbnail {
+                    Image(decorative: thumbnail, scale: 1)
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    Image(systemName: presentation.symbolName)
+                        .font(.system(size: isSelected ? 38 : 30, weight: .light))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if isSelected {
+                Text(presentation.body)
+                    .font(DS.Typography.cardMeta)
+                    .lineLimit(1)
+            }
+            if let meta = presentation.meta {
+                Text(meta)
+                    .font(DS.Typography.cardMeta)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task(id: item.thumbPath) {
+            guard let name = item.thumbPath, let blobStore else { return }
+            thumbnail = await CardAssetLoader.shared.thumbnail(named: name, store: blobStore)
+        }
+    }
+}
+
+private struct FileCardContent: View {
+    let item: ClipItem
+    let presentation: ClipCardPresentation
+    let isSelected: Bool
+
+    @State private var meta: String?
+    @State private var icon: NSImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(DS.Colors.placeholderFill)
+                if let icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(isSelected ? 18 : 12)
+                } else {
+                    Image(systemName: presentation.symbolName)
+                        .font(.system(size: isSelected ? 38 : 30, weight: .light))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(presentation.body)
+                .font(DS.Typography.cardMeta)
+                .lineLimit(1)
+            if let meta {
+                Text(meta)
+                    .font(DS.Typography.cardMeta)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // 图标与元信息异步加载，不阻塞首次唤出的同步渲染（<100ms 预算）。
+        .task(id: item.fileURLs) {
+            let paths = item.fileURLs ?? []
+            icon = await FileIconCache.shared.icon(path: paths.first)
+            meta = await CardAssetLoader.shared.fileMeta(paths: paths)
+        }
+    }
+}
+
+@MainActor
+private final class FileIconCache {
+    static let shared = FileIconCache()
+    private let cache = NSCache<NSString, NSImage>()
+
+    private init() {
+        cache.countLimit = 64
+        cache.totalCostLimit = 8 * 1024 * 1024
+    }
+
+    /// async：命中缓存即返回；未命中才问 Launch Services。由卡片的 `.task` 在首次渲染后调用，
+    /// 因此 `NSWorkspace.icon` 不落在唤出的同步渲染路径上。
+    func icon(path: String?) async -> NSImage? {
+        guard let path, !path.isEmpty else { return nil }
+        if let cached = cache.object(forKey: path as NSString) { return cached }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        cache.setObject(icon, forKey: path as NSString, cost: 128 * 128 * 4)
+        return icon
+    }
+}
+
 private struct SourceAppBadge: View {
     let bundleID: String?
     let name: String
 
+    @State private var icon: NSImage?
+
     var body: some View {
         HStack(spacing: 3) {
-            if let image = SourceAppIconCache.shared.icon(bundleID: bundleID) {
-                Image(nsImage: image)
+            if let icon {
+                Image(nsImage: icon)
                     .resizable()
                     .interpolation(.high)
                     .frame(width: 12, height: 12)
@@ -260,6 +396,10 @@ private struct SourceAppBadge: View {
         }
         .foregroundStyle(.secondary)
         .accessibilityLabel("来自 \(name)")
+        // 来源角标出现在每张卡上：图标异步取，避免同步渲染时批量问 Launch Services。
+        .task(id: bundleID) {
+            icon = await SourceAppIconCache.shared.icon(bundleID: bundleID)
+        }
     }
 }
 
@@ -332,7 +472,7 @@ private final class SourceAppIconCache {
     private let cache = NSCache<NSString, NSImage>()
     private var misses = Set<String>()
 
-    func icon(bundleID: String?) -> NSImage? {
+    func icon(bundleID: String?) async -> NSImage? {
         guard let bundleID, !bundleID.isEmpty, !misses.contains(bundleID) else { return nil }
         if let cached = cache.object(forKey: bundleID as NSString) { return cached }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {

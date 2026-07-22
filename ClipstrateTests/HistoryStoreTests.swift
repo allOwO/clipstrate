@@ -47,6 +47,28 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertTrue(promoted.pinned, "保留原 pinned，不被再次复制清掉")
     }
 
+    func testBackfillsMissingThumbPathOnReupsert() async throws {
+        // 旧图片记录：入库时尚无缩略图。
+        let first = try await store.upsert(
+            ClipItem(kind: .image, blobPath: "hash.png", contentHash: "img1", byteSize: 100), at: 1_000)
+        XCTAssertNil(first.thumbPath)
+
+        // 再次采集同一张图（hash 命中），缩略图此时已生成 → 回填 thumb_path，且不新建行。
+        let promoted = try await store.upsert(
+            ClipItem(kind: .image, blobPath: "hash.png", thumbPath: "hash_800x600_PNG_100.jpg",
+                     contentHash: "img1", byteSize: 100), at: 2_000)
+        XCTAssertEqual(promoted.thumbPath, "hash_800x600_PNG_100.jpg", "缺失的 thumb_path 应被回填")
+        XCTAssertEqual(promoted.lastUsedAt, 2_000)
+        let total = try await store.count()
+        XCTAssertEqual(total, 1, "命中 hash 不新建行")
+
+        // 已有 thumb_path 时不被后续空值覆盖。
+        let again = try await store.upsert(
+            ClipItem(kind: .image, blobPath: "hash.png", thumbPath: nil,
+                     contentHash: "img1", byteSize: 100), at: 3_000)
+        XCTAssertEqual(again.thumbPath, "hash_800x600_PNG_100.jpg", "已有 thumb_path 不被清空")
+    }
+
     func testKeysetPagination() async throws {
         for i in 1...120 {
             _ = try await store.upsert(text("n\(i)", hash: "h\(i)"), at: Int64(i))

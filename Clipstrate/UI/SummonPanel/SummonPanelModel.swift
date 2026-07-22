@@ -12,6 +12,7 @@ final class SummonPanelModel: ObservableObject {
     @Published private(set) var overlayView: AnyView?
 
     var onLayoutChange: (() -> Void)?
+    let blobStore: BlobStore?
 
     private let historyStore: HistoryStore?
     private var overlayBuilder: ChopOverlayBuilder?
@@ -20,11 +21,13 @@ final class SummonPanelModel: ObservableObject {
 
     init(
         historyStore: HistoryStore?,
+        blobStore: BlobStore? = nil,
         overlayBuilder: ChopOverlayBuilder? = nil,
         pasteHandler: SummonPasteHandler? = nil,
         initialItems: [ClipItem] = []
     ) {
         self.historyStore = historyStore
+        self.blobStore = blobStore
         self.overlayBuilder = overlayBuilder
         self.pasteHandler = pasteHandler
         items = Array(initialItems.prefix(SummonPanelLayout.maximumItemCount))

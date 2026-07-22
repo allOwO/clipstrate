@@ -91,7 +91,13 @@ final class HistoryStore: Sendable {
                 .filter(Column("content_hash") == draft.contentHash)
                 .fetchOne(db) {
                 existing.lastUsedAt = now
-                try existing.update(db, columns: ["last_used_at"])
+                var columns = ["last_used_at"]
+                // T1.6 启用缩略图后，为旧记录/曾生成失败的记录补齐路径，避免新缩略图成为孤儿。
+                if existing.thumbPath == nil, let thumbPath = draft.thumbPath {
+                    existing.thumbPath = thumbPath
+                    columns.append("thumb_path")
+                }
+                try existing.update(db, columns: columns)
                 return existing
             }
             var new = draft

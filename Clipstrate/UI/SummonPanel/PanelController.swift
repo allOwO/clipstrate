@@ -15,11 +15,15 @@ final class PanelController: NSObject, NSWindowDelegate {
     private(set) var isVisible = false
 
     override convenience init() {
-        self.init(historyStore: nil, chopOverlayBuilder: nil)
+        self.init(historyStore: nil, blobStore: nil, chopOverlayBuilder: nil)
     }
 
-    init(historyStore: HistoryStore?, chopOverlayBuilder: ChopOverlayBuilder?) {
-        model = SummonPanelModel(historyStore: historyStore, overlayBuilder: chopOverlayBuilder)
+    init(historyStore: HistoryStore?, blobStore: BlobStore? = nil, chopOverlayBuilder: ChopOverlayBuilder?) {
+        model = SummonPanelModel(
+            historyStore: historyStore,
+            blobStore: blobStore,
+            overlayBuilder: chopOverlayBuilder
+        )
         let initialSize = SummonPanelLayout.panelSize(
             itemCount: 0,
             availableWidth: NSScreen.main?.visibleFrame.width ?? SummonPanelLayout.minimumPanelWidth

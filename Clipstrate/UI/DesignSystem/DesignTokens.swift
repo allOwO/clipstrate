@@ -15,7 +15,7 @@ enum DS {
         static let secondaryText = Color.secondary
         /// 选中卡片比普通玻璃略厚；由 GlassSurface 统一应用 tint。
         static let selectedCardTint = Color.primary.opacity(0.035)
-        /// T1.6 接入真实缩略图前的类型占位底色。
+        /// 媒体加载中或不可用时的类型占位底色。
         static let placeholderFill = Color.primary.opacity(0.075)
     }
 
