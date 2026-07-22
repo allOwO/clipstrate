@@ -13,6 +13,10 @@ enum DS {
         static let divider = Color.primary.opacity(0.08)
         /// 次级文字。
         static let secondaryText = Color.secondary
+        /// 选中卡片比普通玻璃略厚；由 GlassSurface 统一应用 tint。
+        static let selectedCardTint = Color.primary.opacity(0.035)
+        /// T1.6 接入真实缩略图前的类型占位底色。
+        static let placeholderFill = Color.primary.opacity(0.075)
     }
 
     enum Metrics {
@@ -52,7 +56,8 @@ enum DS {
 
     enum Typography {
         static let cardTypeLabel = Font.caption.weight(.medium)
-        static let cardBody = Font.system(size: 13)
+        static let cardBody = Font.system(size: 12.5)
+        static let cardBodyCompact = Font.system(size: 11.5)
         static let cardMeta = Font.caption2
         static let entityValue = Font.system(size: 13, weight: .medium)
         static let badge = Font.caption2.weight(.semibold).monospacedDigit()

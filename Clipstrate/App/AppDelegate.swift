@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startCapture()
 
         // 预热唤出面板（常驻隐藏），⌥V 切换显示（不抢焦点）。
-        let panel = PanelController()
+        let panel = PanelController(historyStore: historyStore, chopOverlayBuilder: nil)
         panelController = panel
         hotkeyCenter.setSummonHandler { [weak panel] in panel?.toggle() }
 
@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         janitorTask?.cancel()
         janitorTask = nil
+        panelController?.tearDown()
     }
 
     private func showOnboarding() {
