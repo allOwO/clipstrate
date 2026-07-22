@@ -1,7 +1,7 @@
 # XcodeGen 生成物（工程与 Info.plist 由 project.yml 生成，不入库）
 *.xcodeproj/
 *.xcworkspace/
-ChopClip/Info.plist
+Clipstrate/Info.plist
 
 # Xcode / SwiftPM 构建产物
 build/

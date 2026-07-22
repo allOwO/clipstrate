@@ -1,5 +1,5 @@
 import XCTest
-@testable import ChopClip
+@testable import Clipstrate
 
 @MainActor
 final class HistoryStoreTests: XCTestCase {
@@ -8,7 +8,7 @@ final class HistoryStoreTests: XCTestCase {
 
     override func setUpWithError() throws {
         tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ChopClipTests-\(UUID().uuidString)")
+            .appendingPathComponent("ClipstrateTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         store = try HistoryStore(path: tempDir.appendingPathComponent("history.sqlite").path)
     }

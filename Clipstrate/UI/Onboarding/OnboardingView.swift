@@ -34,7 +34,7 @@ struct OnboardingView: View {
                 .font(.system(size: 30, weight: .medium))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
-                Text("欢迎使用 ChopClip").font(.title2).bold()
+                Text("欢迎使用 Clipstrate").font(.title2).bold()
                 Text("第 \(step + 1) / 2 步").font(.subheadline).foregroundStyle(.secondary)
             }
         }
@@ -45,7 +45,7 @@ struct OnboardingView: View {
     private var clipboardStep: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("允许访问剪贴板").font(.headline)
-            Text("ChopClip 需要读取剪贴板来保存你的复制历史。点击下面的按钮会弹出系统提示——请选择「始终允许」。所有数据仅保存在本机。")
+            Text("Clipstrate 需要读取剪贴板来保存你的复制历史。点击下面的按钮会弹出系统提示——请选择「始终允许」。所有数据仅保存在本机。")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -72,7 +72,7 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             statusRow(done: model.axTrusted,
-                      pending: "尚未授权（在系统设置里勾选 ChopClip 后打勾）",
+                      pending: "尚未授权（在系统设置里勾选 Clipstrate 后打勾）",
                       doneText: "辅助功能已授权")
 
             HStack(spacing: 12) {

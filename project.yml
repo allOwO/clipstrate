@@ -1,4 +1,4 @@
-name: ChopClip
+name: Clipstrate
 
 options:
   bundleIdPrefix: io.github.allowo
@@ -16,18 +16,18 @@ packages:
     from: 2.0.0
 
 targets:
-  ChopClip:
+  Clipstrate:
     type: application
     platform: macOS
     sources:
-      - path: ChopClip
+      - path: Clipstrate
     dependencies:
       - package: GRDB
       - package: KeyboardShortcuts
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.allowo.chopclip
-        PRODUCT_NAME: ChopClip
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.allowo.clipstrate
+        PRODUCT_NAME: Clipstrate
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         ARCHS: arm64
@@ -36,7 +36,7 @@ targets:
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
     info:
-      path: ChopClip/Info.plist
+      path: Clipstrate/Info.plist
       properties:
         # 无 Dock 图标的菜单栏常驻 App
         LSUIElement: true
@@ -45,13 +45,13 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSHumanReadableCopyright: "© 2026"
 
-  ChopClipTests:
+  ClipstrateTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: ChopClipTests
+      - path: ClipstrateTests
     dependencies:
-      - target: ChopClip
+      - target: Clipstrate
     settings:
       base:
         SWIFT_VERSION: "6.0"
@@ -60,16 +60,16 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
-  ChopClip:
+  Clipstrate:
     build:
       targets:
-        ChopClip: all
+        Clipstrate: all
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - ChopClipTests
+        - ClipstrateTests
     profile:
       config: Release
     analyze:

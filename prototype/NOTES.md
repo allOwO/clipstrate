@@ -1,4 +1,4 @@
-# ChopClip UI 原型 — NOTES
+# Clipstrate UI 原型 — NOTES
 
 **性质**：抛弃型原型，不进生产。结论确认后删除本目录，设计定稿收编进 `docs/产品规划.md`。
 
@@ -17,7 +17,7 @@
 **已定结论（第二轮反馈）**：
 - [x] 分词层结构确认 OK（保留玻璃容器 + 顶部实体行 + 词块流），并加入**按住划选**：mousedown 切换锚点词块，按住划过做锚点→当前的范围选择（shift 手感），往回划收缩，松手结束。
 - [x] 来源 App 角标策略：真实实现用「`org.nspasteboard.source`（App 主动声明，最准）→ changeCount 变化瞬间的 `NSWorkspace.frontmostApplication`（常规路径）」两级获取，显示 App 图标+名称；**获取不到就整个不显示角标，不猜**（原型第 5 张 curl 卡演示了无角标形态）。
-- [x] 背景里的"备忘录窗口"只是模拟场景（代表按快捷键时正在用的前台 App），不属于 ChopClip 的 UI。
+- [x] 背景里的"备忘录窗口"只是模拟场景（代表按快捷键时正在用的前台 App），不属于 Clipstrate 的 UI。
 
 **已定结论（第三轮反馈）**：
 - [x] 去掉「粘贴」按钮——粘贴是面板的主动作，不用按钮承载：`⏎` 或**再次点击已选中的卡片**即粘贴；文本卡只保留「纯文本」「✂︎分词」两个修饰动作，图片/文件卡无按钮。菜单栏 Popover 里点击条目 = 复制。
@@ -28,7 +28,7 @@
 
 **已定结论（第五轮反馈）**：
 - [x] **富文本**：保存并展示富文本（RTF/HTML），同时始终存一份纯文本副本——粘贴默认带格式，「纯文本」按钮/开关走纯文本副本，分词也基于纯文本。原型第 2 张卡演示富文本渲染。
-- [x] **数据备份**加入设置：iCloud 云同步（状态/上次备份/自动备份/立即备份/从 iCloud 恢复）+ 导入导出（配置信息、忽略名单、历史数据库勾选，导出单个 .chopclip 文件）。实现排期仍按规划（iCloud 属 P2，导入导出可 P1）。
+- [x] **数据备份**加入设置：iCloud 云同步（状态/上次备份/自动备份/立即备份/从 iCloud 恢复）+ 导入导出（配置信息、忽略名单、历史数据库勾选，导出单个 .clipstrate 文件）。实现排期仍按规划（iCloud 属 P2，导入导出可 P1）。
 - [x] **设置页重排为 macOS 系统设置原生风格**：左侧边栏（通用/快捷键/交互/显示/历史与存储/数据备份/关于，彩色小图标）+ 右侧分组表单（分组圆角卡、行分隔线、右对齐控件），窗口标题随分区变化。只保留 iCopy 的功能集，不复刻其排版。
 
 **已定结论（第六轮反馈）**：
@@ -40,7 +40,7 @@
 **已定结论（第八轮反馈，需求冻结轮）**：
 - [x] **搜索**：两个入口——唤出面板 type-to-search（无常驻输入框，打字即搜，上方浮玻璃搜索胶囊；esc 两段式；中文经 `/` 升级 key window 输入）+ Popover 常驻搜索框。范围 = 正文 / 文件名 / 图片 label（OCR 属 P2）/ 来源 App。规格见 specs 01 §3.6。
 - [x] **本地存储确认 SQLite（GRDB）**+ FTS5 trigram（三列：plain_text/label/app_name）+ blob 落盘；不用 SwiftData/CoreData。
-- [x] **iCloud 备份定案**：Developer ID 拿不到 iCloud entitlement（MAS 专属）→ 直写 `~/Library/Mobile Documents/com~apple~CloudDocs/ChopClip/` 的 `.chopclip` 快照；VACUUM INTO 导 DB；自动备份节流（debounce 5min，含历史库每日≤1 次）；保留 3 近+1 周；恢复=合并导入。`BackupTransport` 接缝留给 MAS 版 CloudKit。规格见 specs 01 §7.2、02 §1/§4。
+- [x] **iCloud 备份定案**：Developer ID 拿不到 iCloud entitlement（MAS 专属）→ 直写 `~/Library/Mobile Documents/com~apple~CloudDocs/Clipstrate/` 的 `.clipstrate` 快照；VACUUM INTO 导 DB；自动备份节流（debounce 5min，含历史库每日≤1 次）；保留 3 近+1 周；恢复=合并导入。`BackupTransport` 接缝留给 MAS 版 CloudKit。规格见 specs 01 §7.2、02 §1/§4。
 - [x] **需求冻结**：用户确认以上为全部需求，此后新想法进 backlog，不扩 v0.1。
 
 **设计定稿**：全部决策已沉淀到 `docs/specs/`（开发以 specs 为准）。本原型保留作像素参考，勿再当决策载体。

@@ -45,7 +45,7 @@ final class StatusItemController {
     private func configureButton() {
         guard let button = statusItem.button else { return }
         if let image = NSImage(systemSymbolName: "list.clipboard",
-                               accessibilityDescription: "ChopClip") {
+                               accessibilityDescription: "Clipstrate") {
             image.isTemplate = true
             button.image = image
         } else {
@@ -58,7 +58,7 @@ final class StatusItemController {
 
     private static func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        let quit = NSMenuItem(title: "退出 ChopClip",
+        let quit = NSMenuItem(title: "退出 Clipstrate",
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         quit.target = NSApp

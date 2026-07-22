@@ -1,12 +1,12 @@
 import os
 
-/// 日志与 signpost 统一门面。subsystem 固定 `io.github.allowo.chopclip`，
+/// 日志与 signpost 统一门面。subsystem 固定 `io.github.allowo.clipstrate`，
 /// 分模块 category（02 §9）。业务代码用 `Log.<模块>.info(...)`。
 ///
 /// Release 下 debug 级由系统按 category 配置过滤；关键路径的 signpost
 /// 全量打点在 T3.1 接线，此处先暴露 `signposter` 句柄供 T1.2 起使用。
 enum Log {
-    static let subsystem = "io.github.allowo.chopclip"
+    static let subsystem = "io.github.allowo.clipstrate"
 
     static let app = Logger(subsystem: subsystem, category: "app")
     static let capture = Logger(subsystem: subsystem, category: "capture")

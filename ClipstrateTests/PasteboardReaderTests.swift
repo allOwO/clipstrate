@@ -1,6 +1,6 @@
 import XCTest
 import AppKit
-@testable import ChopClip
+@testable import Clipstrate
 
 @MainActor
 final class PasteboardReaderTests: XCTestCase {
@@ -114,7 +114,7 @@ final class PasteboardReaderTests: XCTestCase {
     }
 
     func testSelfWriteSkipped() {
-        pb.declareTypes([.string, .chopClipSelfWrite], owner: nil)
+        pb.declareTypes([.string, .clipstrateSelfWrite], owner: nil)
         pb.setString("我们自己粘贴的", forType: .string)
         XCTAssertEqual(skip(), .selfWrite)
     }

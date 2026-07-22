@@ -1,5 +1,5 @@
 import XCTest
-@testable import ChopClip
+@testable import Clipstrate
 
 @MainActor
 final class BlobStoreTests: XCTestCase {
@@ -8,7 +8,7 @@ final class BlobStoreTests: XCTestCase {
 
     override func setUpWithError() throws {
         tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ChopClipBlobTests-\(UUID().uuidString)")
+            .appendingPathComponent("ClipstrateBlobTests-\(UUID().uuidString)")
         store = try BlobStore(blobsDir: tempDir.appendingPathComponent("blobs"),
                               thumbsDir: tempDir.appendingPathComponent("thumbs"))
     }

@@ -15,7 +15,7 @@ final class HistoryStore: Sendable {
         try Self.migrator.migrate(dbPool)
     }
 
-    /// 默认库：Application Support/ChopClip/history.sqlite。
+    /// 默认库：Application Support/Clipstrate/history.sqlite。
     static func makeDefault() throws -> HistoryStore {
         try HistoryStore(path: AppPaths.databaseFile().path)
     }

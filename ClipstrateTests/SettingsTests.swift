@@ -1,5 +1,5 @@
 import XCTest
-@testable import ChopClip
+@testable import Clipstrate
 
 /// T0.1 冒烟测试：设置基线默认值与枚举取值域。
 final class SettingsTests: XCTestCase {

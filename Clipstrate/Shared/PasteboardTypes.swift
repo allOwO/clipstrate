@@ -10,5 +10,5 @@ extension NSPasteboard.PasteboardType {
     /// 来源 App 的 bundle id（最可信的来源信息）。
     static let nsSource = NSPasteboard.PasteboardType("org.nspasteboard.source")
     /// 本 App 粘贴时自写入的标记；再被采集到即跳过，避免自我回环。
-    static let chopClipSelfWrite = NSPasteboard.PasteboardType("io.github.allowo.chopclip.self")
+    static let clipstrateSelfWrite = NSPasteboard.PasteboardType("io.github.allowo.clipstrate.self")
 }

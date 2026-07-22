@@ -1,5 +1,5 @@
 import XCTest
-@testable import ChopClip
+@testable import Clipstrate
 
 @MainActor
 final class RetentionJanitorTests: XCTestCase {
@@ -10,7 +10,7 @@ final class RetentionJanitorTests: XCTestCase {
 
     override func setUpWithError() throws {
         tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ChopClipJanitor-\(UUID().uuidString)")
+            .appendingPathComponent("ClipstrateJanitor-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         store = try HistoryStore(path: tempDir.appendingPathComponent("history.sqlite").path)
         blobs = try BlobStore(blobsDir: tempDir.appendingPathComponent("blobs"),

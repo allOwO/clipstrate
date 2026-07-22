@@ -1,5 +1,5 @@
 import XCTest
-@testable import ChopClip
+@testable import Clipstrate
 
 final class PanelPlacementTests: XCTestCase {
     // 一块 1440×900、原点 (0,0)、无 Dock/菜单栏遮挡的可见区域用于计算。

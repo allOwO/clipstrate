@@ -21,7 +21,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
         }
         let window = NSWindow(contentViewController: NSHostingController(rootView: root))
         window.styleMask = [.titled, .closable]
-        window.title = "欢迎使用 ChopClip"
+        window.title = "欢迎使用 Clipstrate"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()

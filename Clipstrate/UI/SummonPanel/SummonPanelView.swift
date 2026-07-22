@@ -6,7 +6,7 @@ struct SummonPanelView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text("ChopClip")
+            Text("Clipstrate")
                 .font(.headline)
             Text("卡片条 UI（变体 C）见 T1.3")
                 .font(.callout)

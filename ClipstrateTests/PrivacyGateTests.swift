@@ -1,6 +1,6 @@
 import XCTest
 import AppKit
-@testable import ChopClip
+@testable import Clipstrate
 
 final class PrivacyGateTests: XCTestCase {
     func testAccessBehaviorMapping() {

@@ -1,9 +1,9 @@
-# ChopClip Specs — 总览与阅读指南
+# Clipstrate Specs — 总览与阅读指南
 
 > 状态：**设计定稿**（2026-07-21）。交互经 HTML 原型多轮验证（`prototype/index.html`，决策记录见 `prototype/NOTES.md`）。
 > 本目录是**开发的唯一事实来源**：与 `docs/产品规划.md`、原型冲突时，以 specs 为准。
 
-## ChopClip 是什么
+## Clipstrate 是什么
 
 macOS 26 原生剪贴板管理器，三个卖点：
 

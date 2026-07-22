@@ -7,7 +7,7 @@ actor ClipboardMonitor {
     private let store: HistoryStore
     private let blobs: BlobStore
     private let reader: PasteboardReader
-    private let queue = DispatchQueue(label: "io.github.allowo.chopclip.capture", qos: .utility)
+    private let queue = DispatchQueue(label: "io.github.allowo.clipstrate.capture", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var lastChangeCount: Int
 

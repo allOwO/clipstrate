@@ -46,7 +46,7 @@ struct PasteboardReader: Sendable {
         // 跳过规则（在读取内容之前判断）。
         if types.contains(.nsConcealed) { return .skipped(.concealed) }
         if types.contains(.nsTransient) { return .skipped(.transient) }
-        if types.contains(.chopClipSelfWrite) { return .skipped(.selfWrite) }
+        if types.contains(.clipstrateSelfWrite) { return .skipped(.selfWrite) }
 
         let source = resolveSource(pb, frontmost: frontmost)
 

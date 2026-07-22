@@ -1,5 +1,5 @@
 import XCTest
-@testable import ChopClip
+@testable import Clipstrate
 
 final class ContentHashTests: XCTestCase {
     func testDeterministicAndDistinct() {

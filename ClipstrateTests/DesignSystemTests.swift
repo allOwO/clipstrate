@@ -1,6 +1,6 @@
 import XCTest
 import SwiftUI
-@testable import ChopClip
+@testable import Clipstrate
 
 @MainActor
 final class DesignSystemTests: XCTestCase {

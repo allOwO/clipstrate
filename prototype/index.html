@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChopClip UI 原型（抛弃型）</title>
+<title>Clipstrate UI 原型（抛弃型）</title>
 <!--
   PROTOTYPE — 抛弃型原型，不进生产。
-  问题：ChopClip 三个界面（快捷键唤出面板 / 菜单栏 Popover / 设置窗口）长什么样？
+  问题：Clipstrate 三个界面（快捷键唤出面板 / 菜单栏 Popover / 设置窗口）长什么样？
   切换：底部浮条，或按 1 / 2 / 3。唤出面板有 A/B 两个结构变体。
   验证后结论写入 NOTES.md，然后删除本目录。
 -->
@@ -480,7 +480,7 @@
 
   <div class="popover glass">
     <div class="pop-head">
-      <span class="logo">✂️</span><span class="name">ChopClip</span>
+      <span class="logo">✂️</span><span class="name">Clipstrate</span>
       <span class="search">🔍<input id="popSearch" placeholder="搜索剪贴板…" oninput="renderPop()"></span>
     </div>
     <div class="pop-strip" id="popStrip"></div>
@@ -488,7 +488,7 @@
       <span style="font-size:11px;color:var(--text-3);padding-left:6px">共 128 条 · 42 MB</span>
       <span class="right">
         <button class="fbtn" onclick="showScreen('settings')">⚙️ 设置</button>
-        <button class="fbtn" onclick="toast('ChopClip 0.1.0 — 关于窗口占位')">ⓘ 关于</button>
+        <button class="fbtn" onclick="toast('Clipstrate 0.1.0 — 关于窗口占位')">ⓘ 关于</button>
       </span>
     </div>
   </div>
@@ -498,7 +498,7 @@
 <div class="screen" id="screen-settings">
   <div class="menubar">
     <span class="mb-item" style="font-weight:700"></span>
-    <span class="mb-item" style="font-weight:600">ChopClip</span>
+    <span class="mb-item" style="font-weight:600">Clipstrate</span>
     <span class="spacer"></span>
     <span class="mb-icon">✂️</span><span class="mb-item">周一 14:32</span>
   </div>
@@ -610,14 +610,14 @@
             <button class="btn" onclick="toast('已导出到 ~/Downloads ✓')">导出…</button>
           </span></div>
         </div>
-        <div class="group-note">导出为单个 .chopclip 文件，包含所选数据；历史数据库可能较大。</div>
+        <div class="group-note">导出为单个 .clipstrate 文件，包含所选数据；历史数据库可能较大。</div>
       </div>
 
       <div class="sec" id="sec-about">
         <div class="sec-h">关于</div>
         <div class="group" style="text-align:center;padding:28px 0 26px">
           <div style="font-size:48px">✂️</div>
-          <div style="font-size:16px;font-weight:700;margin-top:8px">ChopClip</div>
+          <div style="font-size:16px;font-weight:700;margin-top:8px">Clipstrate</div>
           <div style="font-size:12px;color:var(--text-2);margin-top:4px">版本 0.1.0（原型）</div>
           <div style="font-size:11px;color:var(--text-3);margin-top:12px">数据全本地存储 · 不联网 · © 2026</div>
         </div>
@@ -650,10 +650,10 @@ const items = [
     entities: [ {tag:'淘口令', icon:'🛒', v:'￥AbCdEf12345￥'}, {tag:'手机号', icon:'📱', v:'13812345678'}, {tag:'邮箱', icon:'📧', v:'user@example.com'} ],
     chips: ['复制','这段','文案','，','快','打开','淘宝','领取','优惠券','￥AbCdEf12345￥','！','有','问题','联系','13812345678','或','user@example.com'] },
   { type: 'text', rich: true, app: 'Safari',
-    html: '<b>ChopClip 0.1</b> 发布：<span style="color:#ff6b57">原生玻璃</span>、<u>分词拆选</u>，<i>像内置 App 一样</i>',
-    text: 'ChopClip 0.1 发布：原生玻璃、分词拆选，像内置 App 一样',
+    html: '<b>Clipstrate 0.1</b> 发布：<span style="color:#ff6b57">原生玻璃</span>、<u>分词拆选</u>，<i>像内置 App 一样</i>',
+    text: 'Clipstrate 0.1 发布：原生玻璃、分词拆选，像内置 App 一样',
     entities: [],
-    chips: ['ChopClip','0.1','发布','：','原生','玻璃','、','分词','拆选','，','像','内置','App','一样'] },
+    chips: ['Clipstrate','0.1','发布','：','原生','玻璃','、','分词','拆选','，','像','内置','App','一样'] },
   { type: 'text', app: '飞书', text: '会议改到周四 15:00，链接 https://meet.example.com/x8k2',
     entities: [ {tag:'链接', icon:'🔗', v:'https://meet.example.com/x8k2'}, {tag:'时间', icon:'🕒', v:'周四 15:00'} ],
     chips: ['会议','改到','周四','15:00','，','链接','https://meet.example.com/x8k2'] },
@@ -662,7 +662,7 @@ const items = [
   { type: 'text', app: null /* 演示：来源不可知时不显示角标 */, text: 'curl -X POST https://api.example.com/v1/export -H "Authorization: Bearer …"',
     entities: [ {tag:'链接', icon:'🔗', v:'https://api.example.com/v1/export'} ],
     chips: ['curl','-X','POST','https://api.example.com/v1/export','-H','"Authorization:','Bearer','…"'] },
-  { type: 'file', app: '访达', icon: '📦', label: 'ChopClip.dmg', meta: '~/Downloads · 8.1 MB' },
+  { type: 'file', app: '访达', icon: '📦', label: 'Clipstrate.dmg', meta: '~/Downloads · 8.1 MB' },
 ];
 
 let selected = 0;

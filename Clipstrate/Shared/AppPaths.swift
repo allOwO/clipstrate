@@ -1,11 +1,11 @@
 import Foundation
 
-/// App 落盘路径。数据全部在 `~/Library/Application Support/ChopClip/` 下：
+/// App 落盘路径。数据全部在 `~/Library/Application Support/Clipstrate/` 下：
 /// `history.sqlite`（GRDB）、`blobs/`（富文本原数据 / 图片原图）、`thumbs/`（缩略图）。
 enum AppPaths {
-    static let appFolderName = "ChopClip"
+    static let appFolderName = "Clipstrate"
 
-    /// Application Support/ChopClip/（不存在则创建）。
+    /// Application Support/Clipstrate/（不存在则创建）。
     static func supportDirectory() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,

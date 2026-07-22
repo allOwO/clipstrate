@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         refreshAttention()
 
-        Log.app.info("ChopClip launched (v\(Bundle.main.shortVersion, privacy: .public))")
+        Log.app.info("Clipstrate launched (v\(Bundle.main.shortVersion, privacy: .public))")
     }
 
     /// 打开历史库与 blob 存储并启动剪贴板轮询。任一步失败仅记录降级，不崩溃。
