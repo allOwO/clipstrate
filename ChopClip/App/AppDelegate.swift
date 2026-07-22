@@ -5,6 +5,11 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController?
 
+    // 采集链路（M1 面板/Popover 会复用 historyStore）。
+    private var historyStore: HistoryStore?
+    private var blobStore: BlobStore?
+    private var clipboardMonitor: ClipboardMonitor?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
         NSApp.setActivationPolicy(.accessory)
@@ -13,7 +18,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Settings.registerDefaults()
 
         statusItemController = StatusItemController()
+        startCapture()
 
         Log.app.info("ChopClip launched (v\(Bundle.main.shortVersion, privacy: .public))")
+    }
+
+    /// 打开历史库与 blob 存储并启动剪贴板轮询。任一步失败仅记录降级，不崩溃。
+    private func startCapture() {
+        do {
+            let store = try HistoryStore.makeDefault()
+            let blobs = try BlobStore.makeDefault()
+            let monitor = ClipboardMonitor(store: store, blobs: blobs)
+            historyStore = store
+            blobStore = blobs
+            clipboardMonitor = monitor
+            Task { await monitor.start() }
+        } catch {
+            Log.app.error("capture 初始化失败：\(String(describing: error), privacy: .public)")
+        }
     }
 }
