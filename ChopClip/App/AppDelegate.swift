@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var historyStore: HistoryStore?
     private var blobStore: BlobStore?
     private var clipboardMonitor: ClipboardMonitor?
+    private var retentionJanitor: RetentionJanitor?
+    private var janitorTask: Task<Void, Never>?
     private var onboardingController: OnboardingController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -35,13 +37,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let store = try HistoryStore.makeDefault()
             let blobs = try BlobStore.makeDefault()
             let monitor = ClipboardMonitor(store: store, blobs: blobs)
+            let janitor = RetentionJanitor(store: store, blobs: blobs)
             historyStore = store
             blobStore = blobs
             clipboardMonitor = monitor
+            retentionJanitor = janitor
             Task { await monitor.start() }
+            startJanitor(janitor)
         } catch {
             Log.app.error("capture 初始化失败：\(String(describing: error), privacy: .public)")
         }
+    }
+
+    /// 启动即清一次，之后每小时一次（01 §2）。
+    private func startJanitor(_ janitor: RetentionJanitor) {
+        janitorTask = Task {
+            while !Task.isCancelled {
+                do { try await janitor.runOnce() }
+                catch { Log.store.error("retention 清理失败：\(String(describing: error), privacy: .public)") }
+                try? await Task.sleep(for: .seconds(3600))
+            }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        janitorTask?.cancel()
+        janitorTask = nil
     }
 
     private func showOnboarding() {

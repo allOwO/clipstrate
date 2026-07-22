@@ -161,6 +161,42 @@ final class HistoryStore: Sendable {
         try await dbPool.read { db in try ClipItem.fetchCount(db) }
     }
 
+    // MARK: - 清理（RetentionJanitor 用）
+
+    /// 未置顶且 `last_used_at < cutoff` 的条目（超时限）。
+    func expiredUnpinned(olderThan cutoffMs: Int64) async throws -> [ClipItem] {
+        try await dbPool.read { db in
+            try ClipItem
+                .filter(sql: "pinned = 0 AND last_used_at < ?", arguments: [cutoffMs])
+                .fetchAll(db)
+        }
+    }
+
+    /// 未置顶条目，从旧到新（容量清理的删除顺序）。
+    func unpinnedOldestFirst() async throws -> [ClipItem] {
+        try await dbPool.read { db in
+            try ClipItem
+                .filter(sql: "pinned = 0")
+                .order(sql: "last_used_at ASC, id ASC")
+                .fetchAll(db)
+        }
+    }
+
+    /// 所有条目 `byte_size` 之和（容量度量）。
+    func totalByteSize() async throws -> Int64 {
+        try await dbPool.read { db in
+            try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(byte_size), 0) FROM item") ?? 0
+        }
+    }
+
+    @discardableResult
+    func delete(ids: [Int64]) async throws -> Int {
+        guard !ids.isEmpty else { return 0 }
+        return try await dbPool.write { db in
+            try ClipItem.deleteAll(db, keys: ids)
+        }
+    }
+
     /// 清空（工具 / 测试用）。
     func deleteAll() async throws {
         _ = try await dbPool.write { db in try ClipItem.deleteAll(db) }

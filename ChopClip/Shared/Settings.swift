@@ -33,8 +33,22 @@ enum SettingsKey {
 
 // MARK: - 枚举型设置的取值域
 
+/// 存储时限七档（01 §2/§6，升序）。`unlimited` 不清理。
 enum Retention: String, CaseIterable, Sendable {
-    case day, week, month, quarter, year, unlimited
+    case day, week, month, quarter, halfYear, year, unlimited
+
+    /// 保留时长（秒）；`unlimited` → nil。月/季度/半年/年按固定天数近似。
+    var maxAgeSeconds: TimeInterval? {
+        switch self {
+        case .day: return 86_400
+        case .week: return 7 * 86_400
+        case .month: return 30 * 86_400
+        case .quarter: return 90 * 86_400
+        case .halfYear: return 182 * 86_400
+        case .year: return 365 * 86_400
+        case .unlimited: return nil
+        }
+    }
 }
 
 enum DigitModifier: String, CaseIterable, Sendable {
