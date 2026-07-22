@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var retentionJanitor: RetentionJanitor?
     private var janitorTask: Task<Void, Never>?
     private var onboardingController: OnboardingController?
+    private let hotkeyCenter = HotkeyCenter()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
@@ -22,6 +23,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItemController = StatusItemController()
         startCapture()
+
+        // T1.1：注册唤出热键（⌥V）。T1.2 会把动作接到面板显示。
+        hotkeyCenter.setSummonHandler {
+            Log.system.info("summon hotkey fired")
+        }
 
         if !Settings.onboardingDone {
             showOnboarding()
