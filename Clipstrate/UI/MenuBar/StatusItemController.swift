@@ -1,19 +1,23 @@
 import AppKit
 
-/// 菜单栏状态项与其右键菜单的唯一持有者。
-///
-/// T0.1 范围：显示图标 + 一个可退出 App 的菜单。
-/// T1.8 会让左键弹出 Popover 主界面，本菜单退居右键使用。
+/// 菜单栏状态项的唯一持有者。左键单击 → Popover 主界面；右键 / ⌃点击 → 最小菜单
+/// （设置… / 关于 / 退出）。退出是唯一入口，必须有（01 §5）。
 @MainActor
 final class StatusItemController {
     private let statusItem: NSStatusItem
     private let menu: NSMenu
     private var attentionDot: CALayer?
 
+    /// 左键点击回调（弹 Popover，传状态项按钮作锚点）。
+    var onLeftClick: ((NSStatusBarButton) -> Void)?
+    var onSettings: () -> Void = {}
+    var onAbout: () -> Void = {}
+
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        menu = StatusItemController.makeMenu()
+        menu = NSMenu()
         configureButton()
+        configureMenu()
     }
 
     /// 权限缺失时在图标右上角标黄点（01 §8）。保持底图为模板图以正确适配深浅色，
@@ -56,21 +60,35 @@ final class StatusItemController {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
-    private static func makeMenu() -> NSMenu {
-        let menu = NSMenu()
+    private func configureMenu() {
+        let settings = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        let about = NSMenuItem(title: "关于 Clipstrate", action: #selector(openAbout), keyEquivalent: "")
+        about.target = self
         let quit = NSMenuItem(title: "退出 Clipstrate",
                               action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         quit.target = NSApp
+        menu.addItem(settings)
+        menu.addItem(about)
+        menu.addItem(.separator())
         menu.addItem(quit)
-        return menu
     }
 
     @objc private func handleClick() {
-        // T0.1：左右键都弹出菜单。T1.8 将拆分：左键 → Popover，右键 → 本菜单。
         guard let button = statusItem.button else { return }
-        menu.popUp(positioning: nil,
-                   at: NSPoint(x: 0, y: button.bounds.height + 4),
-                   in: button)
+        let event = NSApp.currentEvent
+        let isRight = event?.type == .rightMouseUp
+            || (event?.modifierFlags.contains(.control) ?? false)
+        if isRight {
+            menu.popUp(positioning: nil,
+                       at: NSPoint(x: 0, y: button.bounds.height + 4),
+                       in: button)
+        } else {
+            onLeftClick?(button)
+        }
     }
+
+    @objc private func openSettings() { onSettings() }
+    @objc private func openAbout() { onAbout() }
 }

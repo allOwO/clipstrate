@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingController: OnboardingController?
     private let hotkeyCenter = HotkeyCenter()
     private var panelController: PanelController?
+    private var popoverController: PopoverController?
     private var pasteService: PasteService?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -48,6 +49,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .copied: ToastPresenter.shared.show("已复制 ✓")
                 case .unavailable: ToastPresenter.shared.show("无法粘贴该条目")
                 case .pasted: break
+                }
+            }
+        }
+
+        // 菜单栏 Popover：左键图标弹出，右键弹菜单（设置…/关于/退出）。
+        let popover = PopoverController(historyStore: historyStore, blobStore: blobStore)
+        popoverController = popover
+        statusItemController?.onLeftClick = { [weak popover] button in popover?.toggle(relativeTo: button) }
+        statusItemController?.onSettings = { [weak self] in self?.openSettings() }
+        statusItemController?.onAbout = { [weak self] in self?.openAbout() }
+        popover.onSettings = { [weak self] in self?.openSettings() }
+        popover.onAbout = { [weak self] in self?.openAbout() }
+        popover.setCopyHandler { [weak paste] item in
+            Task { @MainActor [weak paste] in
+                guard let paste else { return }
+                // 点击条目 = 复制到剪贴板顶部（仅复制，不合成 ⌘V）。
+                let result = await paste.perform(item: item, plainText: Settings.plainTextDefault, action: .copy)
+                switch result {
+                case .copied, .pasted: ToastPresenter.shared.show("已复制 ✓")
+                case .unavailable, .copiedNeedsManualPaste: ToastPresenter.shared.show("无法复制该条目")
                 }
             }
         }
@@ -93,8 +114,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         janitorTask?.cancel()
         janitorTask = nil
         panelController?.tearDown()
+        popoverController?.tearDown()
         ToastPresenter.shared.tearDown()
     }
+
+    // 设置窗口属 B 线（UI/Settings/）、关于页属 T4.2，尚未并入 main：先给占位反馈。
+    private func openSettings() { ToastPresenter.shared.show("设置即将推出") }
+    private func openAbout() { ToastPresenter.shared.show("关于即将推出") }
 
     private func showOnboarding() {
         let controller = OnboardingController { [weak self] in
