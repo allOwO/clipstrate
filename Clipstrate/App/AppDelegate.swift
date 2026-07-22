@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingController: OnboardingController?
     private let hotkeyCenter = HotkeyCenter()
     private var panelController: PanelController?
+    private var pasteService: PasteService?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
@@ -27,8 +28,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 预热唤出面板（常驻隐藏），⌥V 切换显示（不抢焦点）。
         let panel = PanelController(historyStore: historyStore, chopOverlayBuilder: nil)
+        let paste = PasteService(blobStore: blobStore)
+        pasteService = paste
         panelController = panel
         hotkeyCenter.setSummonHandler { [weak panel] in panel?.toggle() }
+        panel.setPasteHandler { [weak panel, weak paste] item, plainText in
+            Task { @MainActor [weak panel, weak paste] in
+                guard let paste else { return }
+                let result = await paste.perform(
+                    item: item,
+                    plainText: plainText || Settings.plainTextDefault,
+                    action: Settings.returnAction
+                )
+                if result.didWritePasteboard, Settings.autoClose { panel?.hide() }
+            }
+        }
 
         if !Settings.onboardingDone {
             showOnboarding()
