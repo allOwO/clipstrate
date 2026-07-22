@@ -86,6 +86,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.setOverlayBuilder(builder)
     }
 
+    func setPasteHandler(_ handler: @escaping SummonPasteHandler) {
+        model.setPasteHandler(handler)
+    }
+
     /// App 终止时显式拆除监听器与异步任务（零泄露清单）。
     func tearDown() {
         removeMonitors()
@@ -126,11 +130,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func installMonitors() {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if event.keyCode == 53 {                 // esc
+            guard let command = Self.command(for: event) else { return event }
+            let consumed = self.model.handle(command)
+            if command == .escape, !consumed {
                 self.hide()
                 return nil
             }
-            return event
+            return consumed ? nil : event
         }
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.hide()
@@ -142,6 +148,21 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let globalClickMonitor { NSEvent.removeMonitor(globalClickMonitor) }
         localKeyMonitor = nil
         globalClickMonitor = nil
+    }
+
+    private static func command(for event: NSEvent) -> SummonPanelCommand? {
+        switch event.keyCode {
+        case 123: return .moveLeft
+        case 124: return .moveRight
+        case 125: return .moveDown
+        case 126: return .moveUp
+        case 36, 76:
+            return event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option)
+                ? .activatePlainText : .activate
+        case 48: return .openChop
+        case 53: return .escape
+        default: return nil
+        }
     }
 
     // MARK: - 失焦即关

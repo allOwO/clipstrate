@@ -24,33 +24,49 @@ struct SummonPanelView: View {
 
     private var cardLayer: some View {
         VStack(spacing: DS.Metrics.hintPillGap) {
-            ScrollView(.horizontal) {
-                if model.items.isEmpty {
-                    emptyState
-                } else {
-                    LazyHStack(alignment: .bottom, spacing: DS.Metrics.cardSpacing) {
-                        ForEach(Array(model.items.enumerated()), id: \.element.contentHash) { index, item in
-                            SummonCardView(
-                                item: item,
-                                index: index,
-                                isSelected: index == model.selectedIndex,
-                                presentationEpoch: model.presentationEpoch,
-                                isPanelPresented: model.isPanelPresented,
-                                onChop: { model.presentChopOverlay(for: item) }
-                            )
-                            .id("\(item.contentHash)-\(model.presentationEpoch)")
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    if model.items.isEmpty {
+                        emptyState
+                    } else {
+                        LazyHStack(alignment: .bottom, spacing: DS.Metrics.cardSpacing) {
+                            ForEach(Array(model.items.enumerated()), id: \.element.contentHash) { index, item in
+                                SummonCardView(
+                                    item: item,
+                                    index: index,
+                                    isSelected: index == model.selectedIndex,
+                                    isActionLayer: index == model.selectedIndex && model.focus != .card,
+                                    focusedActionIndex: index == model.selectedIndex ? model.focus.actionIndex : nil,
+                                    presentationEpoch: model.presentationEpoch,
+                                    isPanelPresented: model.isPanelPresented,
+                                    onActivate: { model.activateCard(at: index) },
+                                    onPlainText: { model.activateAction(0) },
+                                    onChop: { model.activateAction(1) }
+                                )
+                                .id(cardID(item))
+                            }
                         }
+                        .frame(minWidth: 0, minHeight: DS.Metrics.cardSelected.height, alignment: .bottomLeading)
+                        .padding(.horizontal, SummonPanelLayout.shadowPadding)
                     }
-                    .frame(minWidth: 0, minHeight: DS.Metrics.cardSelected.height, alignment: .bottomLeading)
-                    .padding(.horizontal, SummonPanelLayout.shadowPadding)
+                }
+                .scrollIndicators(.hidden)
+                .onChange(of: model.selectedIndex) { _, index in
+                    guard model.items.indices.contains(index) else { return }
+                    withAnimation(MotionPolicy.animation(DS.Anim.cardGrow)) {
+                        proxy.scrollTo(cardID(model.items[index]), anchor: .center)
+                    }
                 }
             }
-            .scrollIndicators(.hidden)
             .frame(height: DS.Metrics.cardSelected.height + SummonPanelLayout.shadowPadding * 2)
 
             SummonHintPill()
         }
         .padding(.vertical, SummonPanelLayout.verticalPadding)
+    }
+
+    private func cardID(_ item: ClipItem) -> String {
+        "\(item.contentHash)-\(model.presentationEpoch)"
     }
 
     private var emptyState: some View {
@@ -68,11 +84,16 @@ private struct SummonCardView: View {
     let item: ClipItem
     let index: Int
     let isSelected: Bool
+    let isActionLayer: Bool
+    let focusedActionIndex: Int?
     let presentationEpoch: Int
     let isPanelPresented: Bool
+    let onActivate: () -> Void
+    let onPlainText: () -> Void
     let onChop: () -> Void
 
     @State private var isEntered = false
+    @State private var isHovered = false
 
     private var size: CGSize {
         isSelected ? DS.Metrics.cardSelected : DS.Metrics.cardUnselected
@@ -101,6 +122,7 @@ private struct SummonCardView: View {
             if isSelected {
                 RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous)
                     .stroke(DS.Colors.selectionRing, lineWidth: DS.Metrics.selectionRingWidth)
+                    .opacity(isActionLayer ? DS.Metrics.actionLayerRingOpacity : 1)
             }
         }
         .shadow(
@@ -111,7 +133,13 @@ private struct SummonCardView: View {
         .animation(MotionPolicy.animation(DS.Anim.cardGrow), value: isSelected)
         .opacity(isEntered ? 1 : 0)
         .offset(y: entranceOffset)
+        .offset(y: isHovered ? -4 : 0)
         .scaleEffect(entranceScale, anchor: .bottom)
+        .contentShape(RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous))
+        .onTapGesture(perform: onActivate)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.16)) { isHovered = hovering }
+        }
         .onAppear { updateEntrance(animate: presentationEpoch > 0 && isPanelPresented) }
         .onChange(of: isPanelPresented) { _, presented in
             if !presented { animateExit() }
@@ -178,8 +206,8 @@ private struct SummonCardView: View {
 
     private var actions: some View {
         HStack(spacing: 6) {
-            ActionCapsule(title: "纯文本") {}
-            ActionCapsule(title: "✂︎ 分词", action: onChop)
+            ActionCapsule(title: "纯文本", isFocused: focusedActionIndex == 0, action: onPlainText)
+            ActionCapsule(title: "✂︎ 分词", isFocused: focusedActionIndex == 1, action: onChop)
         }
         .padding(.top, 8)
     }
@@ -237,6 +265,7 @@ private struct SourceAppBadge: View {
 
 private struct ActionCapsule: View {
     let title: String
+    let isFocused: Bool
     let action: () -> Void
 
     var body: some View {
@@ -247,7 +276,21 @@ private struct ActionCapsule: View {
                 .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+        .background(isFocused ? DS.Colors.accent.opacity(0.16) : .clear, in: Capsule())
         .glassSurface(cornerRadius: 999, interactive: true)
+        .overlay {
+            if isFocused {
+                Capsule().stroke(DS.Colors.selectionRing, lineWidth: 2)
+            }
+        }
+        .animation(.easeInOut(duration: DS.Anim.ringFadeDuration), value: isFocused)
+    }
+}
+
+private extension SummonPanelFocus {
+    var actionIndex: Int? {
+        if case let .action(index) = self { return index }
+        return nil
     }
 }
 
