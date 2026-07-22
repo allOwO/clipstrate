@@ -1,0 +1,78 @@
+name: ChopClip
+
+options:
+  bundleIdPrefix: io.github.allowo
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 7.0.0
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.0.0
+
+targets:
+  ChopClip:
+    type: application
+    platform: macOS
+    sources:
+      - path: ChopClip
+    dependencies:
+      - package: GRDB
+      - package: KeyboardShortcuts
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.allowo.chopclip
+        PRODUCT_NAME: ChopClip
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        ARCHS: arm64
+        # 发布 (M4) 改 YES 并公证；开发期关闭以便 AX/CGEvent 调试
+        ENABLE_HARDENED_RUNTIME: NO
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+    info:
+      path: ChopClip/Info.plist
+      properties:
+        # 无 Dock 图标的菜单栏常驻 App
+        LSUIElement: true
+        LSMinimumSystemVersion: "26.0"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSHumanReadableCopyright: "© 2026"
+
+  ChopClipTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ChopClipTests
+    dependencies:
+      - target: ChopClip
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        # 测试 bundle 无需自定义 plist，交由 Xcode 自动合成（否则代码签名报缺 Info.plist）
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  ChopClip:
+    build:
+      targets:
+        ChopClip: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - ChopClipTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

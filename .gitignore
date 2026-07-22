@@ -1,0 +1,24 @@
+# XcodeGen 生成物（工程与 Info.plist 由 project.yml 生成，不入库）
+*.xcodeproj/
+*.xcworkspace/
+ChopClip/Info.plist
+
+# Xcode / SwiftPM 构建产物
+build/
+DerivedData/
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Xcode 用户态
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# 其它
+*.moved-aside
+*.pbxuser
+!default.pbxuser
