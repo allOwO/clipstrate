@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // 〔P1〕忽略名单与堆栈（01 §7.3 / §10）。
     let ignoreListStore = IgnoreListStore.makeDefault()
     private let clipboardStack = ClipboardStack()
+    private var settingsWindowController: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
@@ -164,8 +165,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 打开通铺式设置窗口（单例复用）。备份区属 M4，先以占位动作接线。
+    private func openSettings() {
+        if settingsWindowController == nil {
+            let actions = SettingsActions(
+                settingChanged: { key in Log.app.debug("setting changed: \(key, privacy: .public)") },
+                backupState: .unavailable,
+                backupNow: { ToastPresenter.shared.show("云备份即将推出") },
+                restoreFromCloud: { ToastPresenter.shared.show("云备份即将推出") },
+                importBackup: { ToastPresenter.shared.show("导入即将推出") },
+                exportBackup: { ToastPresenter.shared.show("导出即将推出") }
+            )
+            settingsWindowController = SettingsWindowController(actions: actions, ignoreListStore: ignoreListStore)
+        }
+        settingsWindowController?.show()
+    }
+
     // 关于页属 T4.2，尚未并入 main：先给占位反馈。
-    private func openSettings() { ToastPresenter.shared.show("设置即将推出") }
     private func openAbout() { ToastPresenter.shared.show("关于即将推出") }
 
     private func toggleStack() {
