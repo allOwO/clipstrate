@@ -5,8 +5,7 @@ import SwiftUI
 @MainActor
 struct SettingsView: View {
     @AppStorage(SettingsKey.launchAtLogin) private var launchAtLogin = true
-    @AppStorage(SettingsKey.soundEnabled) private var soundEnabled = false
-    @AppStorage(SettingsKey.digitModifier) private var digitModifierRaw = DigitModifier.none.rawValue
+    @AppStorage(SettingsKey.digitModifier) private var digitModifierRaw = DigitModifier.cmd.rawValue
     @AppStorage(SettingsKey.pressAction) private var pressActionRaw = ClickAction.paste.rawValue
     @AppStorage(SettingsKey.returnAction) private var returnActionRaw = ClickAction.paste.rawValue
     @AppStorage(SettingsKey.autoClose) private var autoClose = true
@@ -56,7 +55,6 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { onSectionChange(currentSection) }
         .onChange(of: currentSection) { _, section in onSectionChange(section) }
-        .onChange(of: soundEnabled) { _, _ in changed(SettingsKey.soundEnabled) }
         .onChange(of: digitModifierRaw) { _, _ in changed(SettingsKey.digitModifier) }
         .onChange(of: pressActionRaw) { _, _ in changed(SettingsKey.pressAction) }
         .onChange(of: returnActionRaw) { _, _ in changed(SettingsKey.returnAction) }
@@ -148,10 +146,6 @@ struct SettingsView: View {
             SettingsGroup {
                 SettingsRow("登录时启动") {
                     Toggle("", isOn: launchAtLoginBinding).labelsHidden()
-                }
-                SettingsDivider()
-                SettingsRow("开启剪贴板音效") {
-                    Toggle("", isOn: $soundEnabled).labelsHidden()
                 }
             }
             if let loginItemError {

@@ -72,7 +72,6 @@ enum SettingsCatalog {
     /// values are owned and persisted by KeyboardShortcuts.Name.
     static let windowKeys = [
         SettingsKey.launchAtLogin,
-        SettingsKey.soundEnabled,
         SettingsKey.digitModifier,
         SettingsKey.pressAction,
         SettingsKey.returnAction,

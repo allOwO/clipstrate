@@ -11,12 +11,11 @@ final class SettingsTests: XCTestCase {
     func testBaselineDefaultsMatchSpecTable() {
         // 02 §5 默认值表
         XCTAssertTrue(Settings.launchAtLogin)
-        XCTAssertFalse(Settings.soundEnabled)
         XCTAssertTrue(Settings.autoClose)
         XCTAssertFalse(Settings.plainTextDefault)
         XCTAssertEqual(Settings.diskCapMB, 512)
         XCTAssertEqual(Settings.retention, .month)
-        XCTAssertEqual(Settings.digitModifier, .none)
+        XCTAssertEqual(Settings.digitModifier, .cmd)
         XCTAssertEqual(Settings.pressAction, .paste)
         XCTAssertEqual(Settings.returnAction, .paste)
         XCTAssertEqual(Settings.panelStyle, .glass)

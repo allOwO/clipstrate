@@ -7,7 +7,6 @@ import Foundation
 enum SettingsKey {
     // general
     static let launchAtLogin = "general.launchAtLogin"
-    static let soundEnabled = "general.soundEnabled"
     // hotkey（快捷键本体由 KeyboardShortcuts 管理，见 T1.1；此处仅数字直贴修饰键）
     static let digitModifier = "hotkey.digitModifier"
     // interaction
@@ -73,8 +72,7 @@ enum Settings {
     static func registerDefaults() {
         store.register(defaults: [
             SettingsKey.launchAtLogin: true,
-            SettingsKey.soundEnabled: false,
-            SettingsKey.digitModifier: DigitModifier.none.rawValue,
+            SettingsKey.digitModifier: DigitModifier.cmd.rawValue,
             SettingsKey.pressAction: ClickAction.paste.rawValue,
             SettingsKey.returnAction: ClickAction.paste.rawValue,
             SettingsKey.autoClose: true,
@@ -94,13 +92,12 @@ enum Settings {
     // MARK: 读取
 
     static var launchAtLogin: Bool { store.bool(forKey: SettingsKey.launchAtLogin) }
-    static var soundEnabled: Bool { store.bool(forKey: SettingsKey.soundEnabled) }
     static var autoClose: Bool { store.bool(forKey: SettingsKey.autoClose) }
     static var plainTextDefault: Bool { store.bool(forKey: SettingsKey.plainTextDefault) }
     static var diskCapMB: Int { store.integer(forKey: SettingsKey.diskCapMB) }
 
     static var digitModifier: DigitModifier {
-        DigitModifier(rawValue: store.string(forKey: SettingsKey.digitModifier) ?? "") ?? .none
+        DigitModifier(rawValue: store.string(forKey: SettingsKey.digitModifier) ?? "") ?? .cmd
     }
     static var pressAction: ClickAction {
         ClickAction(rawValue: store.string(forKey: SettingsKey.pressAction) ?? "") ?? .paste
