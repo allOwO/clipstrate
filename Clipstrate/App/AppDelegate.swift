@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: PanelController?
     private var popoverController: PopoverController?
     private var pasteService: PasteService?
+    private var entityHUDController: EntityHUDController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
@@ -61,6 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         panel.setChopOverlayBuilder(ChopOverlayFactory.makeBuilder(actions: chopActions))
 
+        // EntityHUD（入口 B，01 §4.1）：复制含实体文本 → 右上角胶囊；⌥X 全局展开分词层。
+        let hud = EntityHUDController { [weak panel] payload in
+            panel?.presentChopOverlay(for: payload.item)
+        }
+        entityHUDController = hud
+        hotkeyCenter.setChopHandler { [weak hud] in hud?.expandIfVisible() }
+
         // 菜单栏 Popover：左键图标弹出，右键弹菜单（设置…/关于/退出）。
         let popover = PopoverController(historyStore: historyStore, blobStore: blobStore)
         popoverController = popover
@@ -94,7 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let store = try HistoryStore.makeDefault()
             let blobs = try BlobStore.makeDefault()
-            let monitor = ClipboardMonitor(store: store, blobs: blobs)
+            let monitor = ClipboardMonitor(store: store, blobs: blobs, onCapture: { [weak self] item in
+                Task { @MainActor in self?.handleCaptured(item) }
+            })
             let janitor = RetentionJanitor(store: store, blobs: blobs)
             historyStore = store
             blobStore = blobs
@@ -123,7 +133,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         janitorTask = nil
         panelController?.tearDown()
         popoverController?.tearDown()
+        entityHUDController?.dismiss()
         ToastPresenter.shared.tearDown()
+    }
+
+    /// 采集到文本后做实体检测（后台），有实体则弹 EntityHUD（01 §4.1 B）。
+    private func handleCaptured(_ item: ClipItem) {
+        guard item.kind == .text, let text = item.plainText, !text.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            let entities = await Task.detached(priority: .utility) {
+                EntityDetector().entities(in: text)
+            }.value
+            guard !entities.isEmpty, let self else { return }
+            self.entityHUDController?.show(item: item, entities: entities)
+        }
     }
 
     // 设置窗口属 B 线（UI/Settings/）、关于页属 T4.2，尚未并入 main：先给占位反馈。

@@ -10,11 +10,19 @@ actor ClipboardMonitor {
     private let queue = DispatchQueue(label: "io.github.allowo.clipstrate.capture", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var lastChangeCount: Int
+    /// 入库后回调（App 层据此做实体检测 + EntityHUD）。Capture 不依赖 Chop（模块方向）。
+    private let onCapture: (@Sendable (ClipItem) -> Void)?
 
-    init(store: HistoryStore, blobs: BlobStore, reader: PasteboardReader = PasteboardReader()) {
+    init(
+        store: HistoryStore,
+        blobs: BlobStore,
+        reader: PasteboardReader = PasteboardReader(),
+        onCapture: (@Sendable (ClipItem) -> Void)? = nil
+    ) {
         self.store = store
         self.blobs = blobs
         self.reader = reader
+        self.onCapture = onCapture
         // 启动时不采集既有剪贴板内容，只从下一次变化开始（隐私友好）。
         self.lastChangeCount = NSPasteboard.general.changeCount
     }
@@ -89,6 +97,7 @@ actor ClipboardMonitor {
             }
             let saved = try await store.upsert(item)
             Log.capture.debug("captured id=\(saved.id ?? -1, privacy: .public) kind=\(saved.kind.rawValue, privacy: .public)")
+            onCapture?(saved)
         } catch {
             Log.capture.error("persist failed: \(String(describing: error), privacy: .public)")
         }

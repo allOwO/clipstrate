@@ -91,6 +91,12 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.setOverlayBuilder(builder)
     }
 
+    /// 全局 ⌥X（EntityHUD 展开，01 §4.1 B）：显示面板并直接挂上该条目的分词层。
+    func presentChopOverlay(for item: ClipItem) {
+        if !isVisible { show() }
+        model.presentChopOverlay(for: item)
+    }
+
     func setPasteHandler(_ handler: @escaping SummonPasteHandler) {
         model.setPasteHandler(handler)
     }
