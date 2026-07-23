@@ -48,6 +48,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.contentView = NSHostingView(rootView: SummonPanelView(model: model))
         model.onLayoutChange = { [weak self] in self?.updateLayout() }
+        model.onIMEInputRequested = { [weak self] in self?.activateIMEInput() }
         model.onRequestClose = { [weak self] in self?.hide() }
         model.prewarm()
         // 预热：先离屏渲染一次，唤出时只需定位 + 前置
@@ -177,7 +178,6 @@ final class PanelController: NSObject, NSWindowDelegate {
             return model.deleteSearchCharacter() ? nil : event
         }
         if event.charactersIgnoringModifiers == "/" {
-            NSApp.activate(ignoringOtherApps: true)
             model.beginIMEInput()
             return nil
         }
@@ -189,6 +189,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         model.appendSearchCharacter(character)
         return nil
+    }
+
+    /// 输入法组合需要应用处于激活态，并由承载 TextField 的 panel 保持 key。
+    /// `/` 与点击搜索胶囊统一走这里，避免鼠标入口只改状态却没有可输入窗口。
+    private func activateIMEInput() {
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
 
     private func removeMonitors() {

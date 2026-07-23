@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 import XCTest
 @testable import Clipstrate
 
@@ -66,10 +68,40 @@ final class SummonPanelSearchTests: XCTestCase {
 
     func testBeginIMEActivatesSearch() {
         let model = SummonPanelModel(historyStore: store)
+        var requestCount = 0
+        model.onIMEInputRequested = { requestCount += 1 }
         XCTAssertFalse(model.isSearching)
         model.beginIMEInput()
         XCTAssertTrue(model.imeInputActive)
         XCTAssertTrue(model.isSearching)
+        XCTAssertEqual(requestCount, 1, "进入输入法态时请求 Controller 激活并置 key")
+
+        model.beginIMEInput()
+        XCTAssertEqual(requestCount, 1, "已在输入法态时不重复激活窗口")
+    }
+
+    func testIMEFieldBecomesFirstResponderWhenCapsuleFirstAppears() async throws {
+        let model = SummonPanelModel(historyStore: nil)
+        let panel = SummonPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 320),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.contentView = NSHostingView(rootView: SummonPanelView(model: model))
+        panel.orderFront(nil)
+        panel.makeKey()
+        defer { panel.orderOut(nil) }
+
+        model.beginIMEInput()
+        for _ in 0..<10 where !(panel.firstResponder is NSTextView) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertTrue(
+            panel.firstResponder is NSTextView,
+            "胶囊由 / 首次插入时，TextField 必须立即成为输入法的 first responder"
+        )
     }
 
     func testTypingFiltersItems() async throws {

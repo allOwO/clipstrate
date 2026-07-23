@@ -108,6 +108,13 @@ struct SummonPanelView: View {
         .glassSurface(cornerRadius: 999)
         .contentShape(Capsule())
         .onTapGesture { model.beginIMEInput() }
+        // `/` 会先切换模型，随后才把胶囊插入视图树；此时 onChange 不会补发初始值，
+        // 因而必须在首次挂载时显式聚焦，TextField 才能成为输入法的 text input client。
+        .onAppear {
+            if model.imeInputActive {
+                searchFieldFocused = true
+            }
+        }
         .onChange(of: model.imeInputActive) { _, active in searchFieldFocused = active }
     }
 }

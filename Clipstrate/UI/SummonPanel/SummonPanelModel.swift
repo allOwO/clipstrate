@@ -20,6 +20,8 @@ final class SummonPanelModel: ObservableObject {
     var isSearching: Bool { imeInputActive || !searchQuery.isEmpty }
 
     var onLayoutChange: (() -> Void)?
+    /// 由 Controller 完成 App 激活与 panel 置 key；View/Model 不直接操纵窗口。
+    var onIMEInputRequested: (() -> Void)?
     /// 分词层完成（复制 / 复制并粘贴 / 返回）时请求关闭整个面板（01 §4.3）。
     var onRequestClose: (() -> Void)?
     let blobStore: BlobStore?
@@ -210,6 +212,7 @@ final class SummonPanelModel: ObservableObject {
         guard !imeInputActive else { return }
         imeInputActive = true
         onLayoutChange?()
+        onIMEInputRequested?()
     }
 
     /// 退出搜索、回全量（第一次 esc）。
@@ -257,6 +260,7 @@ final class SummonPanelModel: ObservableObject {
         searchTask?.cancel()
         searchTask = nil
         onLayoutChange = nil
+        onIMEInputRequested = nil
     }
 
     private func refresh() {
