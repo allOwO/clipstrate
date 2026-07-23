@@ -82,8 +82,8 @@ struct SummonPanelView: View {
             .frame(maxWidth: .infinity, minHeight: DS.Metrics.cardSelected.height)
     }
 
-    /// 搜索胶囊（01 §3.6）：🔍 + 查询词 + 匹配数。ASCII 态由 keyDown 直接并入（字段禁用、
-    /// 只显示）；点击或 `/` 升级为 IME 态（字段可编辑并聚焦，接管中文输入）。
+    /// 搜索胶囊（01 §3.6）：🔍 + 查询词 + 匹配数。ASCII 态由 keyDown 直接并入（字段
+    /// 只显示但保持正常文字颜色）；点击或 `/` 升级为 IME 态（字段可编辑并聚焦，接管中文输入）。
     private var searchCapsule: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
@@ -95,9 +95,10 @@ struct SummonPanelView: View {
             ))
             .textFieldStyle(.plain)
             .font(.system(size: 13))
+            .foregroundStyle(.primary)
             .frame(minWidth: 60)
             .fixedSize()
-            .disabled(!model.imeInputActive)
+            .allowsHitTesting(model.imeInputActive)
             .focused($searchFieldFocused)
             Text(model.items.isEmpty ? "无匹配" : "\(model.matchCount)")
                 .font(.system(size: 11))
