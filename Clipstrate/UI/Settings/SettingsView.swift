@@ -26,6 +26,9 @@ struct SettingsView: View {
     @State private var sectionOffsets: [SettingsSection: CGFloat] = [:]
     @State private var isAtBottom = false
     @State private var loginItemError: String?
+    /// 点侧栏后，在目标分区的几何位置真正稳定前冻结 scroll-spy。
+    /// 不能依赖无动画事务的 completion：它可能早于 offset preference 更新完成。
+    @State private var programmaticScrollTarget: SettingsSection?
 
     private let actions: SettingsActions
     private let loginItemManager: any LoginItemManaging
@@ -75,6 +78,7 @@ struct SettingsView: View {
             VStack(spacing: 1) {
                 ForEach(SettingsSection.allCases) { section in
                     Button {
+                        programmaticScrollTarget = section
                         currentSection = section
                         scrollTarget = section
                     } label: {
@@ -482,7 +486,14 @@ struct SettingsView: View {
     }
 
     private func updateScrollSpy() {
-        let section = SettingsScrollSpy.section(offsets: sectionOffsets, isAtBottom: isAtBottom)
-        if section != currentSection { currentSection = section }
+        let observed = SettingsScrollSpy.section(offsets: sectionOffsets, isAtBottom: isAtBottom)
+        let synchronized = SettingsScrollSpy.synchronize(
+            programmaticTarget: programmaticScrollTarget,
+            observed: observed
+        )
+        programmaticScrollTarget = synchronized.pendingTarget
+        if synchronized.section != currentSection {
+            currentSection = synchronized.section
+        }
     }
 }

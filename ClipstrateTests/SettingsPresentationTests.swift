@@ -21,6 +21,29 @@ final class SettingsPresentationTests: XCTestCase {
         XCTAssertEqual(SettingsScrollSpy.section(offsets: offsets, isAtBottom: true), .about)
     }
 
+    func testProgrammaticScrollKeepsRequestedSelectionUntilTargetSettles() {
+        let transient = SettingsScrollSpy.synchronize(
+            programmaticTarget: .shortcuts,
+            observed: .general
+        )
+        XCTAssertEqual(transient.section, .shortcuts)
+        XCTAssertEqual(transient.pendingTarget, .shortcuts)
+
+        let settled = SettingsScrollSpy.synchronize(
+            programmaticTarget: transient.pendingTarget,
+            observed: .shortcuts
+        )
+        XCTAssertEqual(settled.section, .shortcuts)
+        XCTAssertNil(settled.pendingTarget)
+
+        let manualScroll = SettingsScrollSpy.synchronize(
+            programmaticTarget: nil,
+            observed: .interaction
+        )
+        XCTAssertEqual(manualScroll.section, .interaction)
+        XCTAssertNil(manualScroll.pendingTarget)
+    }
+
     func testSettingsCatalogCoversEveryWindowUserDefaultsKey() {
         XCTAssertEqual(SettingsCatalog.windowKeys.count, 16)
         XCTAssertEqual(Set(SettingsCatalog.windowKeys).count, SettingsCatalog.windowKeys.count)
