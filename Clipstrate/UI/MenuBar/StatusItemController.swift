@@ -48,8 +48,13 @@ final class StatusItemController {
 
     private func configureButton() {
         guard let button = statusItem.button else { return }
-        if let image = NSImage(systemSymbolName: "list.clipboard",
-                               accessibilityDescription: "Clipstrate") {
+        if let image = NSImage(named: "StatusIcon") {
+            image.isTemplate = true
+            image.size = NSSize(width: 18, height: 18)
+            button.image = image
+            button.setAccessibilityLabel("Clipstrate")
+        } else if let image = NSImage(systemSymbolName: "list.clipboard",
+                                      accessibilityDescription: "Clipstrate") {
             image.isTemplate = true
             button.image = image
         } else {
