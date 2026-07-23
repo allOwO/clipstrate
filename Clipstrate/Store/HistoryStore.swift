@@ -114,7 +114,9 @@ final class HistoryStore: Sendable {
     /// keyset 分页（02 §4）：按 `pinned DESC, last_used_at DESC, id DESC`，
     /// 传上一页最后一条 `after` 取下一页。首页传 nil。
     func page(after cursor: ClipItem? = nil, limit: Int = 50) async throws -> [ClipItem] {
-        try await dbPool.read { db in
+        let interval = Log.signposter.beginInterval("db.page")
+        defer { Log.signposter.endInterval("db.page", interval) }
+        return try await dbPool.read { db in
             var request = ClipItem
                 .order(sql: "pinned DESC, last_used_at DESC, id DESC")
                 .limit(limit)
@@ -131,6 +133,8 @@ final class HistoryStore: Sendable {
     /// 搜索（01 §3.6 范围：正文 / label / 来源 App，同权）。≥3 字符走 FTS5 trigram，
     /// 更短走 `LIKE` 回退；空查询回退为最近一页。
     func search(_ query: String, limit: Int = 50) async throws -> [ClipItem] {
+        let interval = Log.signposter.beginInterval("search.keystroke")
+        defer { Log.signposter.endInterval("search.keystroke", interval) }
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if q.isEmpty { return try await page(limit: limit) }
 

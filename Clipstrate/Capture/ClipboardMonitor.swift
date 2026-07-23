@@ -57,15 +57,19 @@ actor ClipboardMonitor {
     }
 
     private func tick() async {
-        let outcome: CaptureOutcome? = autoreleasepool {
+        // changeCount 比对很廉价，不打 signpost；仅在真有变化时计量读取+入库这一拍。
+        let changeCount = NSPasteboard.general.changeCount
+        guard changeCount != lastChangeCount else { return }
+        lastChangeCount = changeCount
+
+        let interval = Log.signposter.beginInterval("capture.tick")
+        defer { Log.signposter.endInterval("capture.tick", interval) }
+
+        let outcome: CaptureOutcome = autoreleasepool {
             let pb = NSPasteboard.general
-            let changeCount = pb.changeCount
-            guard changeCount != lastChangeCount else { return nil }
-            lastChangeCount = changeCount
             let frontmost = SourceApp(running: NSWorkspace.shared.frontmostApplication)
             return reader.read(from: pb, frontmost: frontmost, now: HistoryStore.nowMillis())
         }
-        guard let outcome else { return }
 
         switch outcome {
         case .captured(let clip):

@@ -52,6 +52,8 @@ final class ChopOverlayModel {
     func load() async {
         guard tokens.isEmpty, !text.isEmpty else { return }
         isLoading = true
+        let interval = Log.signposter.beginInterval("chop.tokenize")
+        defer { Log.signposter.endInterval("chop.tokenize", interval) }
 
         let segmenter = segmenter
         let detector = detector
