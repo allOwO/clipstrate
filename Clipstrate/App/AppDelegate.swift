@@ -189,8 +189,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.show()
     }
 
-    // 关于页属 T4.2，尚未并入 main：先给占位反馈。
-    private func openAbout() { ToastPresenter.shared.show("关于即将推出") }
+    private func openAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel()
+    }
 
     /// 首次启动应用规格默认值；之后始终以系统登录项状态为准，
     /// 避免 UserDefaults 显示“开”而 SMAppService 实际未注册。
