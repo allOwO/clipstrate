@@ -7,7 +7,10 @@ actor ClipboardMonitor {
     private let store: HistoryStore
     private let blobs: BlobStore
     private let reader: PasteboardReader
-    private let queue = DispatchQueue(label: "io.github.allowo.clipstrate.capture", qos: .utility)
+    private let queue = DispatchQueue(
+        label: "io.github.allowo.clipstrate.capture",
+        qos: .utility
+    )
     private var timer: DispatchSourceTimer?
     private var lastChangeCount: Int
     /// 入库后回调（App 层据此做实体检测 + EntityHUD）。Capture 不依赖 Chop（模块方向）。

@@ -13,6 +13,16 @@ final class CloudDocsTransportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
     }
 
+    func testDefaultDirectoryIsClipstrateInsideCloudDocs() {
+        let transport = CloudDocsTransport()
+
+        XCTAssertEqual(
+            transport.directoryURL,
+            CloudDocsTransport.defaultCloudDocsRoot
+                .appendingPathComponent("Clipstrate", isDirectory: true)
+        )
+    }
+
     func testListsRegularAndPlaceholderBackupsNewestFirst() throws {
         let root = temporaryRoot("listing")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -63,7 +73,10 @@ final class CloudDocsTransportTests: XCTestCase {
 
         let remaining = try transport.backups()
         XCTAssertEqual(remaining.count, 8)
-        XCTAssertEqual(Set(remaining.prefix(3).map(\.displayName)), Set(["0.clipstrate", "1.clipstrate", "2.clipstrate"]))
+        XCTAssertEqual(
+            Set(remaining.prefix(3).map(\.displayName)),
+            Set(["0.clipstrate", "1.clipstrate", "2.clipstrate"])
+        )
     }
 
     func testCloudFilenameSanitizesDeviceName() {

@@ -13,6 +13,11 @@ protocol BackupTransport: Sendable {
     ) async throws -> URL
 }
 
+/// 免费版 iCloud Drive 备份通道。
+///
+/// Clipstrate 是非沙盒的个人工具，无法在不加入 Apple Developer Program 的前提下
+/// 申请应用专属 ubiquity container。这里使用 macOS 的本地 iCloud Drive 挂载点，
+/// 自动写入 `iCloud Drive/Clipstrate`，云端传输由系统负责。
 struct CloudDocsTransport: BackupTransport {
     let cloudDocsRoot: URL
 
@@ -22,7 +27,10 @@ struct CloudDocsTransport: BackupTransport {
 
     static var defaultCloudDocsRoot: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+            .appendingPathComponent(
+                "Library/Mobile Documents/com~apple~CloudDocs",
+                isDirectory: true
+            )
     }
 
     var directoryURL: URL {
