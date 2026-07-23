@@ -15,9 +15,41 @@ final class HistoryStore: Sendable {
         try Self.migrator.migrate(dbPool)
     }
 
-    /// 默认库：Application Support/Clipstrate/history.sqlite。
+    /// 默认库：Application Support/Clipstrate/history.sqlite（带损坏自愈）。
     static func makeDefault() throws -> HistoryStore {
-        try HistoryStore(path: AppPaths.databaseFile().path)
+        try open(path: AppPaths.databaseFile().path)
+    }
+
+    /// 打开库；若文件损坏（SQLITE_CORRUPT / NOTADB）则隔离损坏文件并重建空库
+    /// （T3.3 边界：DB 损坏重建，绝不因损坏而崩溃 / 无法启动）。
+    static func open(path: String) throws -> HistoryStore {
+        do {
+            return try HistoryStore(path: path)
+        } catch {
+            guard isCorruption(error) else { throw error }
+            Log.store.error("history DB corrupt, rebuilding fresh store")
+            try quarantineCorruptDatabase(at: path)
+            return try HistoryStore(path: path)
+        }
+    }
+
+    private static func isCorruption(_ error: Error) -> Bool {
+        guard let dbError = error as? DatabaseError else { return false }
+        return dbError.resultCode == .SQLITE_CORRUPT || dbError.resultCode == .SQLITE_NOTADB
+    }
+
+    /// 把损坏的 db（含 -wal/-shm）改名留档，让位给全新空库。孤儿 blob 由后续清理回收。
+    private static func quarantineCorruptDatabase(at path: String) throws {
+        let fm = FileManager.default
+        let stamp = Int(Date().timeIntervalSince1970.rounded())
+        let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+        for suffix in ["", "-wal", "-shm"] {
+            let source = URL(fileURLWithPath: path + suffix)
+            guard fm.fileExists(atPath: source.path) else { continue }
+            let destination = directory.appendingPathComponent("history-corrupt-\(stamp).sqlite\(suffix)")
+            try? fm.removeItem(at: destination)
+            try fm.moveItem(at: source, to: destination)
+        }
     }
 
     // MARK: - 迁移

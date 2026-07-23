@@ -144,4 +144,25 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(fetched?.fileURLs, ["/tmp/a.txt", "/tmp/b.txt"])
         XCTAssertEqual(fetched?.kind, .file)
     }
+
+    func testRecoversFromCorruptDatabase() async throws {
+        // 写一个非 SQLite 文件冒充损坏库。
+        let path = tempDir.appendingPathComponent("corrupt.sqlite").path
+        try Data("this is definitely not a sqlite database".utf8)
+            .write(to: URL(fileURLWithPath: path))
+
+        // open 应隔离损坏文件并重建空库，而非抛错。
+        let recovered = try HistoryStore.open(path: path)
+        let count = try await recovered.count()
+        XCTAssertEqual(count, 0, "损坏后重建为空库")
+
+        _ = try await recovered.upsert(text("after-recovery", hash: "r1"), at: 1)
+        let page = try await recovered.page()
+        XCTAssertEqual(page.first?.plainText, "after-recovery", "重建后可正常写入")
+
+        let quarantined = try FileManager.default
+            .contentsOfDirectory(atPath: tempDir.path)
+            .contains { $0.hasPrefix("history-corrupt-") }
+        XCTAssertTrue(quarantined, "损坏文件应留档，便于事后取证")
+    }
 }
