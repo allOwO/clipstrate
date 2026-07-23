@@ -20,6 +20,8 @@ final class SummonPanelModel: ObservableObject {
     var isSearching: Bool { imeInputActive || !searchQuery.isEmpty }
 
     var onLayoutChange: (() -> Void)?
+    /// 分词层完成（复制 / 复制并粘贴 / 返回）时请求关闭整个面板（01 §4.3）。
+    var onRequestClose: (() -> Void)?
     let blobStore: BlobStore?
 
     private let historyStore: HistoryStore?
@@ -160,8 +162,9 @@ final class SummonPanelModel: ObservableObject {
 
     func presentChopOverlay(for item: ClipItem) {
         guard item.kind == .text, !(item.plainText ?? "").isEmpty, let overlayBuilder else { return }
+        // overlay 完成（复制/粘贴/返回按钮）→ 关闭整个面板；esc 由面板监听器走 dismissOverlay 回卡片层。
         overlayView = overlayBuilder(ChopOverlayRequest(item: item)) { [weak self] in
-            Task { @MainActor [weak self] in self?.dismissOverlay() }
+            Task { @MainActor [weak self] in self?.onRequestClose?() }
         }
         onLayoutChange?()
     }

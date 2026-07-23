@@ -48,6 +48,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.contentView = NSHostingView(rootView: SummonPanelView(model: model))
         model.onLayoutChange = { [weak self] in self?.updateLayout() }
+        model.onRequestClose = { [weak self] in self?.hide() }
         model.prewarm()
         // 预热：先离屏渲染一次，唤出时只需定位 + 前置
         panel.orderOut(nil)

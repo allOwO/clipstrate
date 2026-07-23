@@ -50,6 +50,20 @@ final class PasteService {
         return .pasted
     }
 
+    /// 原始文本复制（分词层：复制所选词块 / 实体值）：写剪贴板 + 自写入标记。
+    @discardableResult
+    func copyPlainText(_ text: String) -> Bool {
+        pasteboard.declareTypes([.string, .clipstrateSelfWrite], owner: nil)
+        guard pasteboard.setString(text, forType: .string) else { return false }
+        return pasteboard.setData(Data(), forType: .clipstrateSelfWrite)
+    }
+
+    /// 原始文本复制并粘贴（分词层 ⇧⏎）：写剪贴板后按需合成 ⌘V（未授权则只复制）。
+    func pastePlainText(_ text: String) {
+        guard copyPlainText(text), isAXTrusted() else { return }
+        postPasteKeystroke()
+    }
+
     private func write(item: ClipItem, plainText: Bool) async -> Bool {
         switch item.kind {
         case .text:

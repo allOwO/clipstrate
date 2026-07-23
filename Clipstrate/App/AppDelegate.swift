@@ -53,6 +53,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // 分词层（B 线 ChopOverlay）挂载到面板 overlay 槽位；副作用注入到 UI/System 边界。
+        let chopActions = ChopOverlayActions(
+            copyText: { [weak paste] text in paste?.copyPlainText(text) },
+            pasteText: { [weak paste] text in paste?.pastePlainText(text) },
+            showToast: { text in ToastPresenter.shared.show(text) }
+        )
+        panel.setChopOverlayBuilder(ChopOverlayFactory.makeBuilder(actions: chopActions))
+
         // 菜单栏 Popover：左键图标弹出，右键弹菜单（设置…/关于/退出）。
         let popover = PopoverController(historyStore: historyStore, blobStore: blobStore)
         popoverController = popover
