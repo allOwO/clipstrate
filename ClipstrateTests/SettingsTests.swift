@@ -36,4 +36,14 @@ final class SettingsTests: XCTestCase {
         defer { UserDefaults.standard.removeObject(forKey: SettingsKey.retention) }
         XCTAssertEqual(Settings.retention, .month)
     }
+
+    func testRegisteredDefaultDoesNotCountAsPersistedLaunchPreference() {
+        XCTAssertFalse(Settings.hasLaunchAtLoginPreference(in: nil))
+        XCTAssertFalse(Settings.hasLaunchAtLoginPreference(in: [:]))
+        XCTAssertTrue(
+            Settings.hasLaunchAtLoginPreference(
+                in: [SettingsKey.launchAtLogin: false]
+            )
+        )
+    }
 }

@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var janitorTask: Task<Void, Never>?
     private var onboardingController: OnboardingController?
     private let hotkeyCenter = HotkeyCenter()
+    private let loginItemManager: any LoginItemManaging = SystemLoginItemManager()
     private var panelController: PanelController?
     private var popoverController: PopoverController?
     private var pasteService: PasteService?
@@ -28,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 设置项默认值必须在任何读取之前注册（02 §5 基线）。
         Settings.registerDefaults()
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            synchronizeLaunchAtLogin()
+        }
 
         statusItemController = StatusItemController()
         startCapture()
@@ -176,13 +180,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 importBackup: { ToastPresenter.shared.show("导入即将推出") },
                 exportBackup: { ToastPresenter.shared.show("导出即将推出") }
             )
-            settingsWindowController = SettingsWindowController(actions: actions, ignoreListStore: ignoreListStore)
+            settingsWindowController = SettingsWindowController(
+                actions: actions,
+                loginItemManager: loginItemManager,
+                ignoreListStore: ignoreListStore
+            )
         }
         settingsWindowController?.show()
     }
 
     // 关于页属 T4.2，尚未并入 main：先给占位反馈。
     private func openAbout() { ToastPresenter.shared.show("关于即将推出") }
+
+    /// 首次启动应用规格默认值；之后始终以系统登录项状态为准，
+    /// 避免 UserDefaults 显示“开”而 SMAppService 实际未注册。
+    private func synchronizeLaunchAtLogin() {
+        if !Settings.hasPersistedLaunchAtLoginPreference {
+            do {
+                try loginItemManager.setEnabled(true)
+            } catch {
+                Log.app.error("默认注册登录项失败：\(String(describing: error), privacy: .public)")
+            }
+        }
+        Settings.setLaunchAtLogin(loginItemManager.state.isSelected)
+    }
 
     private func toggleStack() {
         Task { [clipboardStack] in

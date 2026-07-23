@@ -91,6 +91,19 @@ enum Settings {
 
     // MARK: 读取
 
+    /// `register(defaults:)` 不会写入持久域；借此区分“首次启动使用默认值”
+    /// 与用户已经明确设置过登录项偏好。
+    static var hasPersistedLaunchAtLoginPreference: Bool {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return false }
+        return hasLaunchAtLoginPreference(
+            in: store.persistentDomain(forName: bundleIdentifier)
+        )
+    }
+
+    static func hasLaunchAtLoginPreference(in persistentDomain: [String: Any]?) -> Bool {
+        persistentDomain?[SettingsKey.launchAtLogin] != nil
+    }
+
     static var launchAtLogin: Bool { store.bool(forKey: SettingsKey.launchAtLogin) }
     static var autoClose: Bool { store.bool(forKey: SettingsKey.autoClose) }
     static var plainTextDefault: Bool { store.bool(forKey: SettingsKey.plainTextDefault) }
@@ -120,6 +133,10 @@ enum Settings {
     static var onboardingDone: Bool { store.bool(forKey: SettingsKey.onboardingDone) }
 
     // MARK: 写入（非 UI 代码早期写入的少量键；其余由设置窗口经 @AppStorage 写）
+
+    static func setLaunchAtLogin(_ value: Bool) {
+        store.set(value, forKey: SettingsKey.launchAtLogin)
+    }
 
     static func setOnboardingDone(_ value: Bool) {
         store.set(value, forKey: SettingsKey.onboardingDone)

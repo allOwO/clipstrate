@@ -121,15 +121,55 @@ struct SettingsActions {
 
 @MainActor
 protocol LoginItemManaging {
+    var state: LoginItemState { get }
     func setEnabled(_ enabled: Bool) throws
+}
+
+enum LoginItemState: Equatable, Sendable {
+    case disabled
+    case enabled
+    case requiresApproval
+    case unavailable
+
+    var isSelected: Bool {
+        self == .enabled || self == .requiresApproval
+    }
+
+    var notice: String? {
+        switch self {
+        case .requiresApproval:
+            "已添加登录项，请在“系统设置 › 通用 › 登录项与扩展”中允许 Clipstrate。"
+        case .unavailable:
+            "当前构建无法注册登录项。"
+        case .disabled, .enabled:
+            nil
+        }
+    }
 }
 
 @MainActor
 struct SystemLoginItemManager: LoginItemManaging {
+    var state: LoginItemState {
+        switch SMAppService.mainApp.status {
+        case .notRegistered: .disabled
+        case .enabled: .enabled
+        case .requiresApproval: .requiresApproval
+        case .notFound: .unavailable
+        @unknown default: .unavailable
+        }
+    }
+
     func setEnabled(_ enabled: Bool) throws {
         let service = SMAppService.mainApp
         if enabled {
-            if service.status != .enabled { try service.register() }
+            switch service.status {
+            case .notRegistered, .notFound:
+                try service.register()
+            case .enabled, .requiresApproval:
+                break
+            @unknown default:
+                try service.register()
+            }
         } else if service.status == .enabled || service.status == .requiresApproval {
             try service.unregister()
         }

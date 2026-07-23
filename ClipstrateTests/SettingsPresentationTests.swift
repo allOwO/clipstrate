@@ -53,6 +53,16 @@ final class SettingsPresentationTests: XCTestCase {
         XCTAssertFalse(SettingsCatalog.windowKeys.contains(SettingsKey.onboardingDone))
     }
 
+    func testLoginItemStateReflectsRegistrationAndApproval() {
+        XCTAssertFalse(LoginItemState.disabled.isSelected)
+        XCTAssertTrue(LoginItemState.enabled.isSelected)
+        XCTAssertTrue(LoginItemState.requiresApproval.isSelected)
+        XCTAssertFalse(LoginItemState.unavailable.isSelected)
+        XCTAssertNil(LoginItemState.enabled.notice)
+        XCTAssertNotNil(LoginItemState.requiresApproval.notice)
+        XCTAssertNotNil(LoginItemState.unavailable.notice)
+    }
+
     func testStorageOptionsMatchSpecification() {
         XCTAssertEqual(SettingsCatalog.defaultWindowSize, CGSize(width: 780, height: 560))
         XCTAssertEqual(SettingsCatalog.diskCapsMB, [256, 512, 1_024, 2_048])

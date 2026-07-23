@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var sectionOffsets: [SettingsSection: CGFloat] = [:]
     @State private var isAtBottom = false
     @State private var loginItemError: String?
+    @State private var loginItemNotice: String?
     /// 点侧栏后，在目标分区的几何位置真正稳定前冻结 scroll-spy。
     /// 不能依赖无动画事务的 completion：它可能早于 offset preference 更新完成。
     @State private var programmaticScrollTarget: SettingsSection?
@@ -53,7 +54,13 @@ struct SettingsView: View {
         }
         .frame(minWidth: 680, minHeight: 480)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { onSectionChange(currentSection) }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshLoginItemStatus()
+        }
+        .onAppear {
+            refreshLoginItemStatus()
+            onSectionChange(currentSection)
+        }
         .onChange(of: currentSection) { _, section in onSectionChange(section) }
         .onChange(of: digitModifierRaw) { _, _ in changed(SettingsKey.digitModifier) }
         .onChange(of: pressActionRaw) { _, _ in changed(SettingsKey.pressAction) }
@@ -151,6 +158,10 @@ struct SettingsView: View {
             if let loginItemError {
                 SettingsNote(text: "登录项更新失败：\(loginItemError)")
                     .foregroundStyle(.red)
+            }
+            if let loginItemNotice {
+                SettingsNote(text: loginItemNotice)
+                    .foregroundStyle(.orange)
             }
         }
     }
@@ -400,10 +411,11 @@ struct SettingsView: View {
                 do {
                     try loginItemManager.setEnabled(enabled)
                     loginItemError = nil
-                    launchAtLogin = enabled
+                    refreshLoginItemStatus()
                     changed(SettingsKey.launchAtLogin)
                 } catch {
                     loginItemError = error.localizedDescription
+                    refreshLoginItemStatus()
                 }
             }
         )
@@ -483,5 +495,11 @@ struct SettingsView: View {
         if synchronized.section != currentSection {
             currentSection = synchronized.section
         }
+    }
+
+    private func refreshLoginItemStatus() {
+        let state = loginItemManager.state
+        launchAtLogin = state.isSelected
+        loginItemNotice = state.notice
     }
 }
