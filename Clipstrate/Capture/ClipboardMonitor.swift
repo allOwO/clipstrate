@@ -12,17 +12,21 @@ actor ClipboardMonitor {
     private var lastChangeCount: Int
     /// 入库后回调（App 层据此做实体检测 + EntityHUD）。Capture 不依赖 Chop（模块方向）。
     private let onCapture: (@Sendable (ClipItem) -> Void)?
+    /// 忽略名单判定（注入，避免 Capture→Chop 依赖）：返回 true 则该来源 App 不入库（01 §7.3）。
+    private let isIgnored: (@Sendable (String?) async -> Bool)?
 
     init(
         store: HistoryStore,
         blobs: BlobStore,
         reader: PasteboardReader = PasteboardReader(),
-        onCapture: (@Sendable (ClipItem) -> Void)? = nil
+        onCapture: (@Sendable (ClipItem) -> Void)? = nil,
+        isIgnored: (@Sendable (String?) async -> Bool)? = nil
     ) {
         self.store = store
         self.blobs = blobs
         self.reader = reader
         self.onCapture = onCapture
+        self.isIgnored = isIgnored
         // 启动时不采集既有剪贴板内容，只从下一次变化开始（隐私友好）。
         self.lastChangeCount = NSPasteboard.general.changeCount
     }
@@ -74,6 +78,11 @@ actor ClipboardMonitor {
     }
 
     private func persist(_ clip: CapturedClip) async {
+        // 忽略名单：前台来源 App 在名单内则整条跳过（01 §7.3）。
+        if let isIgnored, await isIgnored(clip.item.appBundleID) {
+            Log.capture.debug("capture skipped: ignored source app")
+            return
+        }
         do {
             var item = clip.item
             if let data = clip.blobData, let name = clip.item.blobPath {

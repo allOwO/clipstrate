@@ -27,4 +27,14 @@ final class HotkeyCenter {
     func setChopHandler(_ handler: @escaping () -> Void) {
         KeyboardShortcuts.onKeyDown(for: .chop, action: handler)
     }
+
+    /// 〔P1〕堆栈开关（⌃⇧C）。
+    func setStackToggleHandler(_ handler: @escaping () -> Void) {
+        KeyboardShortcuts.onKeyDown(for: .stackToggle, action: handler)
+    }
+
+    /// 〔P1〕堆栈单条粘贴（⌃⇧V）。
+    func setStackPasteHandler(_ handler: @escaping () -> Void) {
+        KeyboardShortcuts.onKeyDown(for: .stackPaste, action: handler)
+    }
 }

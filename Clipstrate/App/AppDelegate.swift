@@ -17,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popoverController: PopoverController?
     private var pasteService: PasteService?
     private var entityHUDController: EntityHUDController?
+    // 〔P1〕忽略名单与堆栈（01 §7.3 / §10）。
+    let ignoreListStore = IgnoreListStore.makeDefault()
+    private let clipboardStack = ClipboardStack()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
@@ -69,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         entityHUDController = hud
         hotkeyCenter.setChopHandler { [weak hud] in hud?.expandIfVisible() }
 
+        // 〔P1〕堆栈：⌃⇧C 开关、⌃⇧V 弹栈顶并粘贴（01 §10）。
+        hotkeyCenter.setStackToggleHandler { [weak self] in self?.toggleStack() }
+        hotkeyCenter.setStackPasteHandler { [weak self] in self?.popStackAndPaste() }
+
         // 菜单栏 Popover：左键图标弹出，右键弹菜单（设置…/关于/退出）。
         let popover = PopoverController(historyStore: historyStore, blobStore: blobStore)
         popoverController = popover
@@ -102,9 +109,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let store = try HistoryStore.makeDefault()
             let blobs = try BlobStore.makeDefault()
-            let monitor = ClipboardMonitor(store: store, blobs: blobs, onCapture: { [weak self] item in
-                Task { @MainActor in self?.handleCaptured(item) }
-            })
+            let monitor = ClipboardMonitor(
+                store: store,
+                blobs: blobs,
+                onCapture: { [weak self] item in
+                    Task { @MainActor in self?.handleCaptured(item) }
+                },
+                isIgnored: { [ignoreListStore] bundleID in
+                    (try? await ignoreListStore.contains(bundleIdentifier: bundleID)) ?? false
+                }
+            )
             let janitor = RetentionJanitor(store: store, blobs: blobs)
             historyStore = store
             blobStore = blobs
@@ -137,8 +151,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ToastPresenter.shared.tearDown()
     }
 
-    /// 采集到文本后做实体检测（后台），有实体则弹 EntityHUD（01 §4.1 B）。
+    /// 堆栈开启时入栈（enqueue 内部判 enabled）；文本条目再做实体检测弹 EntityHUD（01 §4.1 B / §10）。
     private func handleCaptured(_ item: ClipItem) {
+        Task { [clipboardStack] in await clipboardStack.enqueue(item) }
         guard item.kind == .text, let text = item.plainText, !text.isEmpty else { return }
         Task { @MainActor [weak self] in
             let entities = await Task.detached(priority: .utility) {
@@ -149,9 +164,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // 设置窗口属 B 线（UI/Settings/）、关于页属 T4.2，尚未并入 main：先给占位反馈。
+    // 关于页属 T4.2，尚未并入 main：先给占位反馈。
     private func openSettings() { ToastPresenter.shared.show("设置即将推出") }
     private func openAbout() { ToastPresenter.shared.show("关于即将推出") }
+
+    private func toggleStack() {
+        Task { [clipboardStack] in
+            let state = await clipboardStack.toggle()
+            ToastPresenter.shared.show(state.isEnabled ? "堆栈已开启" : "堆栈已关闭")
+        }
+    }
+
+    private func popStackAndPaste() {
+        Task { @MainActor [weak self, clipboardStack] in
+            guard let item = await clipboardStack.dequeue() else {
+                ToastPresenter.shared.show("堆栈为空")
+                return
+            }
+            guard let paste = self?.pasteService else { return }
+            _ = await paste.perform(item: item, plainText: Settings.plainTextDefault, action: .paste)
+        }
+    }
 
     private func showOnboarding() {
         let controller = OnboardingController { [weak self] in
