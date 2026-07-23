@@ -32,6 +32,7 @@ struct SettingsView: View {
     /// 但在设置里持续刷新可让用户在系统设置改动后尽快看到变化。
     @State private var pasteboardAllowed = PrivacyGate.isPasteboardAllowed
     @State private var axTrusted = AXPermission.isTrusted
+    @State private var observedBackupState = SettingsBackupState.unavailable
     private let permissionPoll = Timer.publish(every: 0.8, on: .main, in: .common).autoconnect()
     /// 窗口激活态：失焦时把选中高亮转为系统式灰色（原生窗口非激活观感）。
     @Environment(\.controlActiveState) private var controlActiveState
@@ -64,9 +65,11 @@ struct SettingsView: View {
         .onReceive(permissionPoll) { _ in refreshPermissions() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshLoginItemStatus()
+            refreshBackupState()
         }
         .onAppear {
             refreshLoginItemStatus()
+            refreshBackupState()
             onSectionChange(currentSection)
         }
         .onChange(of: currentSection) { _, section in onSectionChange(section) }
@@ -78,10 +81,14 @@ struct SettingsView: View {
         .onChange(of: panelItemCount) { _, _ in changed(SettingsKey.panelItemCount) }
         .onChange(of: diskCapMB) { _, _ in changed(SettingsKey.diskCapMB) }
         .onChange(of: retentionRaw) { _, _ in changed(SettingsKey.retention) }
-        .onChange(of: backupAutoICloud) { _, _ in changed(SettingsKey.backupAutoICloud) }
+        .onChange(of: backupAutoICloud) { _, _ in
+            changed(SettingsKey.backupAutoICloud)
+            refreshBackupState()
+        }
         .onChange(of: backupIncludeSettings) { _, _ in changed(SettingsKey.backupIncludeSettings) }
         .onChange(of: backupIncludeIgnoreList) { _, _ in changed(SettingsKey.backupIncludeIgnoreList) }
         .onChange(of: backupIncludeHistory) { _, _ in changed(SettingsKey.backupIncludeHistory) }
+        .onChange(of: backupLastUploadAt) { _, _ in refreshBackupState() }
     }
 
     private var sidebar: some View {
@@ -339,7 +346,10 @@ struct SettingsView: View {
                 SettingsDivider()
                 SettingsToggleRow("粘贴为纯文本（全局默认）", isOn: $plainTextDefault)
             }
-            IgnoreListSettingsView(store: ignoreListStore)
+            IgnoreListSettingsView(
+                store: ignoreListStore,
+                onChange: actions.ignoreListChanged
+            )
         }
     }
 
@@ -489,7 +499,7 @@ struct SettingsView: View {
                                 .font(.system(size: 12))
                         }
                     }
-                    Text("数据全本地存储 · 不联网 · © 2026 allOwO")
+                    Text("数据默认仅本地存储 · iCloud 备份可选 · © 2026 allOwO")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                         .padding(.top, 4)
@@ -594,12 +604,12 @@ struct SettingsView: View {
     }
 
     private var isBackupAvailable: Bool {
-        if case .available = actions.backupState { return true }
+        if case .available = observedBackupState { return true }
         return false
     }
 
     private var backupStatusText: String {
-        switch actions.backupState {
+        switch observedBackupState {
         case .unavailable: "请在系统设置开启 iCloud 云盘"
         case let .available(status): status
         }
@@ -619,6 +629,10 @@ struct SettingsView: View {
 
     private func changed(_ key: String) {
         actions.settingChanged(key)
+    }
+
+    private func refreshBackupState() {
+        observedBackupState = actions.backupState()
     }
 
     private func updateScrollSpy() {

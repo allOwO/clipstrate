@@ -130,4 +130,26 @@ final class BackupServiceTests: XCTestCase {
         let count = try await destination.history.count()
         XCTAssertEqual(count, 0)
     }
+
+    func testContentSignatureIsStableAndChangesWithHistory() async throws {
+        let fixture = try makeFixture(named: "signature")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let selection = BackupSelection(settings: false, ignoreList: false, history: true)
+
+        let empty = try await fixture.service.contentSignature(for: selection)
+        let repeatedEmpty = try await fixture.service.contentSignature(for: selection)
+        XCTAssertEqual(empty, repeatedEmpty)
+
+        try await fixture.history.upsert(
+            ClipItem(kind: .text, plainText: "one", contentHash: "hash-one")
+        )
+        let populated = try await fixture.service.contentSignature(for: selection)
+        XCTAssertNotEqual(populated, empty)
+
+        try await fixture.history.upsert(
+            ClipItem(kind: .text, plainText: "duplicate", contentHash: "hash-one")
+        )
+        let repeatedPopulated = try await fixture.service.contentSignature(for: selection)
+        XCTAssertEqual(populated, repeatedPopulated)
+    }
 }

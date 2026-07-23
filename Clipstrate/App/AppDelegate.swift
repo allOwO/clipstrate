@@ -11,10 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboardMonitor: ClipboardMonitor?
     private var retentionJanitor: RetentionJanitor?
     private var backupService: BackupService?
+    private var automaticBackupCoordinator: AutomaticBackupCoordinator?
     private var janitorTask: Task<Void, Never>?
     private var onboardingController: OnboardingController?
     private let hotkeyCenter = HotkeyCenter()
     private let loginItemManager: any LoginItemManaging = SystemLoginItemManager()
+    private let cloudBackupTransport = CloudDocsTransport()
     private var panelController: PanelController?
     private var popoverController: PopoverController?
     private var pasteService: PasteService?
@@ -138,11 +140,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             blobStore = blobs
             clipboardMonitor = monitor
             retentionJanitor = janitor
-            backupService = BackupService(
+            let backup = BackupService(
                 historyStore: store,
                 blobStore: blobs,
                 ignoreListStore: ignoreListStore
             )
+            backupService = backup
+            let coordinator = AutomaticBackupCoordinator(
+                backupService: backup,
+                transport: cloudBackupTransport
+            )
+            automaticBackupCoordinator = coordinator
+            if Settings.backupAutoICloud {
+                Task {
+                    await coordinator.schedule(Set([.settings, .ignoreList, .history]))
+                }
+            }
             Task { await monitor.start() }
             startJanitor(janitor)
         } catch {
@@ -164,6 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         janitorTask?.cancel()
         janitorTask = nil
+        let coordinator = automaticBackupCoordinator
+        Task { await coordinator?.cancel() }
         panelController?.tearDown()
         popoverController?.tearDown()
         entityHUDController?.dismiss()
@@ -173,6 +188,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 堆栈开启时入栈（enqueue 内部判 enabled）；文本条目再做实体检测弹 EntityHUD（01 §4.1 B / §10）。
     private func handleCaptured(_ item: ClipItem) {
         Task { [clipboardStack] in await clipboardStack.enqueue(item) }
+        if Settings.backupAutoICloud, let coordinator = automaticBackupCoordinator {
+            Task { await coordinator.schedule(.history) }
+        }
         guard item.kind == .text, let text = item.plainText, !text.isEmpty else { return }
         Task { @MainActor [weak self] in
             let entities = await Task.detached(priority: .utility) {
@@ -183,14 +201,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 打开通铺式设置窗口（单例复用）。备份区属 M4，先以占位动作接线。
+    /// 打开通铺式设置窗口（单例复用）。
     private func openSettings() {
+        refreshLatestCloudBackupDate()
         if settingsWindowController == nil {
             let actions = SettingsActions(
-                settingChanged: { key in Log.app.debug("setting changed: \(key, privacy: .public)") },
-                backupState: .unavailable,
-                backupNow: { ToastPresenter.shared.show("云备份即将推出") },
-                restoreFromCloud: { ToastPresenter.shared.show("云备份即将推出") },
+                settingChanged: { [weak self] key in self?.handleSettingChanged(key) },
+                ignoreListChanged: { [weak self] in
+                    self?.scheduleAutomaticBackup(.ignoreList)
+                },
+                backupState: { [weak self] in
+                    self?.currentBackupState() ?? .unavailable
+                },
+                backupNow: { [weak self] in self?.backupToICloud() },
+                restoreFromCloud: { [weak self] in self?.chooseCloudBackupToRestore() },
                 importBackup: { [weak self] in self?.chooseBackupToImport() },
                 exportBackup: { [weak self] in self?.chooseBackupDestination() }
             )
@@ -201,6 +225,150 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         settingsWindowController?.show()
+    }
+
+    /// 只在打开设置时扫描一次目录，让另一台 Mac 创建的最新备份也能显示；
+    /// 不常驻监听 iCloud 目录。
+    private func refreshLatestCloudBackupDate() {
+        guard let latest = try? cloudBackupTransport.backups().first else { return }
+        let timestamp = latest.modifiedAt.timeIntervalSince1970
+        if timestamp > Settings.backupLastUploadAt {
+            Settings.setBackupLastUploadAt(timestamp)
+        }
+    }
+
+    private func handleSettingChanged(_ key: String) {
+        Log.app.debug("setting changed: \(key, privacy: .public)")
+        guard let coordinator = automaticBackupCoordinator else { return }
+        if key == SettingsKey.backupAutoICloud {
+            if Settings.backupAutoICloud {
+                Task {
+                    await coordinator.schedule(Set([.settings, .ignoreList, .history]))
+                }
+            } else {
+                Task { await coordinator.cancel() }
+            }
+            return
+        }
+        guard Settings.backupAutoICloud else { return }
+        let change: BackupChange = key == SettingsKey.backupIncludeHistory
+            ? .history
+            : .settings
+        Task { await coordinator.schedule(change) }
+    }
+
+    private func scheduleAutomaticBackup(_ change: BackupChange) {
+        guard Settings.backupAutoICloud,
+              let coordinator = automaticBackupCoordinator else { return }
+        Task { await coordinator.schedule(change) }
+    }
+
+    private func currentBackupState() -> SettingsBackupState {
+        guard cloudBackupTransport.isAvailable else { return .unavailable }
+        if Settings.backupLastUploadAt > 0 { return .available(status: "已备份") }
+        if Settings.backupAutoICloud { return .available(status: "待上传") }
+        return .available(status: "可用")
+    }
+
+    private func backupToICloud() {
+        guard let coordinator = automaticBackupCoordinator else {
+            ToastPresenter.shared.show("历史库不可用，无法备份")
+            return
+        }
+        let selection = BackupSelection.currentSettings
+        Task { @MainActor in
+            do {
+                _ = try await coordinator.backupNow(selection: selection)
+                ToastPresenter.shared.show("已备份到 iCloud Drive ✓")
+            } catch {
+                ToastPresenter.shared.show(error.localizedDescription)
+                Log.store.error(
+                    "手动 iCloud 备份失败：\(String(describing: error), privacy: .public)"
+                )
+            }
+        }
+    }
+
+    private func chooseCloudBackupToRestore() {
+        let available: [BackupFile]
+        do {
+            available = try cloudBackupTransport.backups()
+        } catch {
+            ToastPresenter.shared.show(error.localizedDescription)
+            return
+        }
+        guard !available.isEmpty else {
+            ToastPresenter.shared.show("iCloud Drive 中还没有备份")
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = "从 iCloud 恢复"
+        panel.prompt = "选择"
+        panel.directoryURL = cloudBackupTransport.directoryURL
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.showsHiddenFiles = true
+        guard panel.runModal() == .OK,
+              let selectedURL = panel.url,
+              let file = available.first(where: { $0.url == selectedURL })
+                ?? available.first(where: { $0.displayName == selectedURL.lastPathComponent })
+        else { return }
+
+        confirmAndRestoreCloudBackup(file)
+    }
+
+    private func confirmAndRestoreCloudBackup(_ file: BackupFile) {
+        let confirmation = NSAlert()
+        confirmation.messageText = "从 \(file.displayName) 恢复？"
+        confirmation.informativeText = "恢复前会先在本机保存一份当前数据快照。设置和忽略名单将覆盖，历史会去重合并。"
+        confirmation.alertStyle = .warning
+        confirmation.addButton(withTitle: "恢复")
+        confirmation.addButton(withTitle: "取消")
+        guard confirmation.runModal() == .alertFirstButtonReturn else { return }
+        restoreCloudBackup(file)
+    }
+
+    private func restoreCloudBackup(_ file: BackupFile) {
+        guard let backupService else {
+            ToastPresenter.shared.show("历史库不可用，无法恢复")
+            return
+        }
+        let transport = cloudBackupTransport
+        Task { @MainActor [weak self] in
+            do {
+                let source = try await transport.materialize(file) { percent in
+                    Task { @MainActor in
+                        let text = percent.map { "正在从 iCloud 下载 \(Int($0))%" }
+                            ?? "正在从 iCloud 下载…"
+                        ToastPresenter.shared.show(text, duration: 5)
+                    }
+                }
+                let snapshots = try AppPaths.restoreSnapshotsDirectory()
+                let snapshot = snapshots.appendingPathComponent(
+                    BackupNaming.restoreSnapshotFilename()
+                )
+                try await backupService.exportArchive(
+                    to: snapshot,
+                    selection: BackupSelection(
+                        settings: true,
+                        ignoreList: true,
+                        history: true
+                    )
+                )
+                let result = try await backupService.importArchive(from: source)
+                try self?.applyImportedLoginItem(result.requestedLaunchAtLogin)
+                ToastPresenter.shared.show(
+                    "恢复完成：新增 \(result.history.insertedCount) 条，跳过 \(result.history.duplicateCount) 条重复"
+                )
+            } catch {
+                ToastPresenter.shared.show(error.localizedDescription)
+                Log.store.error(
+                    "iCloud 恢复失败：\(String(describing: error), privacy: .public)"
+                )
+            }
+        }
     }
 
     private func chooseBackupDestination() {
@@ -257,10 +425,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor [weak self] in
             do {
                 let result = try await backupService.importArchive(from: source)
-                if let enabled = result.requestedLaunchAtLogin, let self {
-                    try self.loginItemManager.setEnabled(enabled)
-                    Settings.setLaunchAtLogin(self.loginItemManager.state.isSelected)
-                }
+                try self?.applyImportedLoginItem(result.requestedLaunchAtLogin)
                 let inserted = result.history.insertedCount
                 let duplicates = result.history.duplicateCount
                 ToastPresenter.shared.show("导入完成：新增 \(inserted) 条，跳过 \(duplicates) 条重复")
@@ -269,6 +434,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Log.store.error("导入备份失败：\(String(describing: error), privacy: .public)")
             }
         }
+    }
+
+    private func applyImportedLoginItem(_ enabled: Bool?) throws {
+        guard let enabled else { return }
+        try loginItemManager.setEnabled(enabled)
+        Settings.setLaunchAtLogin(loginItemManager.state.isSelected)
     }
 
     private static func backupFilename(now: Date = Date()) -> String {

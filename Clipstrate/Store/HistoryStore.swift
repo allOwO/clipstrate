@@ -208,6 +208,16 @@ final class HistoryStore: Sendable {
         try await dbPool.read { db in try ClipItem.fetchCount(db) }
     }
 
+    /// 自动备份去重只关心内容集合；按 hash 排序后交由 BackupService 计算稳定摘要。
+    func contentHashesForBackup() async throws -> [String] {
+        try await dbPool.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT content_hash FROM item ORDER BY content_hash"
+            )
+        }
+    }
+
     // MARK: - 清理（RetentionJanitor 用）
 
     /// 未置顶且 `last_used_at < cutoff` 的条目（超时限）。

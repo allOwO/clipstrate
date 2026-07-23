@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 actor BackupService {
@@ -134,6 +135,33 @@ actor BackupService {
         return result
     }
 
+    /// 为自动备份生成稳定签名。历史只读取已有 content_hash，不读取 blob，
+    /// 因此即使一万条记录也只是很小的顺序查询。
+    func contentSignature(for selection: BackupSelection) async throws -> String {
+        guard !selection.isEmpty else { throw BackupError.emptySelection }
+        var hasher = SHA256()
+        if selection.settings {
+            Self.update(
+                &hasher,
+                label: "settings",
+                data: try Self.encoder.encode(Settings.makeBackupDocument())
+            )
+        }
+        if selection.ignoreList {
+            Self.update(
+                &hasher,
+                label: "ignore",
+                data: try await ignoreListStore.exportData()
+            )
+        }
+        if selection.history {
+            for hash in try await historyStore.contentHashesForBackup() {
+                Self.update(&hasher, label: "history", data: Data(hash.utf8))
+            }
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     private func requireComponent(_ url: URL, named name: String, when required: Bool) throws {
         guard required else { return }
         guard fileManager.fileExists(atPath: url.path),
@@ -192,4 +220,11 @@ actor BackupService {
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }()
+
+    private static func update(_ hasher: inout SHA256, label: String, data: Data) {
+        hasher.update(data: Data(label.utf8))
+        var size = UInt64(data.count).bigEndian
+        withUnsafeBytes(of: &size) { hasher.update(bufferPointer: $0) }
+        hasher.update(data: data)
+    }
 }

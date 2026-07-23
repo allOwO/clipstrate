@@ -30,6 +30,10 @@ enum AppPaths {
         try ensureSubdirectory("thumbs")
     }
 
+    static func restoreSnapshotsDirectory() throws -> URL {
+        try ensureSubdirectory("restore-snapshots")
+    }
+
     private static func ensureSubdirectory(_ name: String) throws -> URL {
         let dir = try supportDirectory().appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

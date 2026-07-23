@@ -25,6 +25,10 @@ enum SettingsKey {
     static let backupIncludeIgnoreList = "backup.include.ignoreList"
     static let backupIncludeHistory = "backup.include.history"
     static let backupLastUploadAt = "backup.lastUploadAt"
+    // 自动备份内部状态，不在设置窗口展示，也不写入备份包。
+    static let backupLastFullUploadAt = "backup.lastFullUploadAt"
+    static let backupLastSmallSignature = "backup.lastSmallSignature"
+    static let backupLastFullSignature = "backup.lastFullSignature"
     // onboarding
     static let onboardingDone = "onboarding.done"
 }
@@ -98,6 +102,9 @@ enum Settings {
             SettingsKey.backupIncludeIgnoreList: true,
             SettingsKey.backupIncludeHistory: true,
             SettingsKey.backupLastUploadAt: 0.0,
+            SettingsKey.backupLastFullUploadAt: 0.0,
+            SettingsKey.backupLastSmallSignature: "",
+            SettingsKey.backupLastFullSignature: "",
             SettingsKey.onboardingDone: false,
         ])
     }
@@ -148,6 +155,15 @@ enum Settings {
     static var backupIncludeIgnoreList: Bool { store.bool(forKey: SettingsKey.backupIncludeIgnoreList) }
     static var backupIncludeHistory: Bool { store.bool(forKey: SettingsKey.backupIncludeHistory) }
     static var backupLastUploadAt: Double { store.double(forKey: SettingsKey.backupLastUploadAt) }
+    static var backupLastFullUploadAt: Double {
+        store.double(forKey: SettingsKey.backupLastFullUploadAt)
+    }
+    static var backupLastSmallSignature: String {
+        store.string(forKey: SettingsKey.backupLastSmallSignature) ?? ""
+    }
+    static var backupLastFullSignature: String {
+        store.string(forKey: SettingsKey.backupLastFullSignature) ?? ""
+    }
     static var onboardingDone: Bool { store.bool(forKey: SettingsKey.onboardingDone) }
 
     // MARK: 写入（非 UI 代码早期写入的少量键；其余由设置窗口经 @AppStorage 写）
@@ -161,6 +177,15 @@ enum Settings {
     }
     static func setBackupLastUploadAt(_ value: Double) {
         store.set(value, forKey: SettingsKey.backupLastUploadAt)
+    }
+    static func setBackupLastFullUploadAt(_ value: Double) {
+        store.set(value, forKey: SettingsKey.backupLastFullUploadAt)
+    }
+    static func setBackupLastSmallSignature(_ value: String) {
+        store.set(value, forKey: SettingsKey.backupLastSmallSignature)
+    }
+    static func setBackupLastFullSignature(_ value: String) {
+        store.set(value, forKey: SettingsKey.backupLastFullSignature)
     }
 
     // MARK: 备份

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 @MainActor
 struct IgnoreListSettingsView: View {
     let store: IgnoreListStore
+    var onChange: () -> Void = {}
 
     @State private var applications: [IgnoredApplication] = []
     @State private var isWorking = false
@@ -106,8 +107,9 @@ struct IgnoreListSettingsView: View {
         isWorking = true
         Task {
             do {
-                _ = try await operation()
+                let changed = try await operation()
                 await reload()
+                if changed { onChange() }
             } catch {
                 errorMessage = error.localizedDescription
             }

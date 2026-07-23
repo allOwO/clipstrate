@@ -1,5 +1,11 @@
 import Foundation
 
+enum BackupChange: Hashable, Sendable {
+    case settings
+    case ignoreList
+    case history
+}
+
 struct BackupSelection: Codable, Equatable, Sendable {
     var settings: Bool
     var ignoreList: Bool
@@ -16,6 +22,15 @@ struct BackupSelection: Codable, Equatable, Sendable {
             history: Settings.backupIncludeHistory
         )
     }
+}
+
+struct BackupFile: Identifiable, Equatable, Sendable {
+    let url: URL
+    let displayName: String
+    let modifiedAt: Date
+    let isPlaceholder: Bool
+
+    var id: URL { url }
 }
 
 struct BackupManifest: Codable, Equatable, Sendable {
@@ -41,6 +56,8 @@ enum BackupError: LocalizedError, Equatable {
     case unsupportedFormat(Int)
     case missingComponent(String)
     case archiveToolFailed(String)
+    case cloudDriveUnavailable
+    case cloudDownloadTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -54,6 +71,36 @@ enum BackupError: LocalizedError, Equatable {
             "备份文件缺少 \(name)。"
         case let .archiveToolFailed(message):
             "无法处理备份文件：\(message)"
+        case .cloudDriveUnavailable:
+            "请先在系统设置中开启 iCloud 云盘。"
+        case .cloudDownloadTimedOut:
+            "iCloud 下载超时，请稍后重试。"
         }
+    }
+}
+
+enum BackupNaming {
+    static func cloudFilename(
+        now: Date = Date(),
+        deviceName: String = Host.current().localizedName ?? "Mac"
+    ) -> String {
+        let safeDevice = deviceName
+            .replacingOccurrences(
+                of: #"[^A-Za-z0-9\p{Han}._-]+"#,
+                with: "-",
+                options: .regularExpression
+            )
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".-_"))
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmm"
+        return "Clipstrate-\(safeDevice.isEmpty ? "Mac" : safeDevice)-\(formatter.string(from: now)).clipstrate"
+    }
+
+    static func restoreSnapshotFilename(now: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "Clipstrate-before-restore-\(formatter.string(from: now)).clipstrate"
     }
 }

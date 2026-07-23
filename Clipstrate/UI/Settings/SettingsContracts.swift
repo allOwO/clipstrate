@@ -88,7 +88,8 @@ enum SettingsBackupState: Equatable, Sendable {
 @MainActor
 struct SettingsActions {
     var settingChanged: (String) -> Void
-    var backupState: SettingsBackupState
+    var ignoreListChanged: () -> Void
+    var backupState: () -> SettingsBackupState
     var backupNow: () -> Void
     var restoreFromCloud: () -> Void
     var importBackup: () -> Void
@@ -96,13 +97,15 @@ struct SettingsActions {
 
     init(
         settingChanged: @escaping (String) -> Void = { _ in },
-        backupState: SettingsBackupState = .unavailable,
+        ignoreListChanged: @escaping () -> Void = {},
+        backupState: @escaping () -> SettingsBackupState = { .unavailable },
         backupNow: @escaping () -> Void = {},
         restoreFromCloud: @escaping () -> Void = {},
         importBackup: @escaping () -> Void = {},
         exportBackup: @escaping () -> Void = {}
     ) {
         self.settingChanged = settingChanged
+        self.ignoreListChanged = ignoreListChanged
         self.backupState = backupState
         self.backupNow = backupNow
         self.restoreFromCloud = restoreFromCloud
