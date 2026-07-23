@@ -76,11 +76,12 @@ struct OnboardingView: View {
                       doneText: "辅助功能已授权")
 
             HStack(spacing: 12) {
-                Button("开启辅助功能") {
-                    AXPermission.promptIfNeeded()
-                    AXPermission.openAccessibilitySettings()
-                }
-                .buttonStyle(.borderedProminent)
+                // 只弹系统提示（保持在最前、点完即消失）；打开设置拆为独立按钮，
+                // 不再同时把设置窗口叠到提示前面导致提示卡在后面不消失。
+                Button("请求授权") { AXPermission.promptIfNeeded() }
+                    .buttonStyle(.borderedProminent)
+                Button("打开系统设置") { AXPermission.openAccessibilitySettings() }
+                    .buttonStyle(.link)
             }
         }
     }

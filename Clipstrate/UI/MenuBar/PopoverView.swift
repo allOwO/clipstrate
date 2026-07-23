@@ -77,22 +77,48 @@ struct PopoverView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Text("共 \(model.totalCount) 条 · \(byteText)")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(action: onSettings) { Label("设置", systemImage: "gearshape") }
-            Button(action: onAbout) { Label("关于", systemImage: "info.circle") }
+            FooterButton(title: "设置", systemImage: "gearshape", action: onSettings)
+            FooterButton(title: "关于", systemImage: "info.circle", action: onAbout)
         }
-        .buttonStyle(.plain)
-        .font(.system(size: 12))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     private var byteText: String {
         ByteCountFormatter.string(fromByteCount: model.totalBytes, countStyle: .file)
+    }
+}
+
+/// 底部工具按钮：图标与文字贴近成一体，整块（含内边距）可点击；
+/// 悬停时给淡灰圆角高亮，贴近 macOS 原生条目观感。
+private struct FooterButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                Text(title)
+            }
+            .font(.system(size: 12))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(hovering ? 0.10 : 0))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 

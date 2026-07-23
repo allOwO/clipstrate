@@ -61,19 +61,23 @@ struct SummonPanelView: View {
                                     onPlainText: { model.activateAction(0) },
                                     onChop: { model.activateAction(1) }
                                 )
+                                // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
+                                // 不改变行高、不引起纵向重排或向下过冲。
+                                .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
                                 .id(cardID(item))
                             }
                         }
                         .frame(minWidth: 0, minHeight: DS.Metrics.cardSelected.height, alignment: .bottomLeading)
-                        .padding(.horizontal, SummonPanelLayout.shadowPadding)
+                        // 四周等量留白：卡片玻璃阴影在留白内羽化完，ScrollView 的裁剪
+                        // 边界落在透明区——既不裁成硬线，也不向下铺出（下探）。
+                        .padding(SummonPanelLayout.shadowPadding)
                     }
                 }
                 .scrollIndicators(.hidden)
                 .onChange(of: model.selectedIndex) { _, index in
                     guard model.items.indices.contains(index) else { return }
-                    withAnimation(MotionPolicy.animation(DS.Anim.cardGrow)) {
-                        proxy.scrollTo(cardID(model.items[index]), anchor: .center)
-                    }
+                    // 瞬时定位，不做滚动动画（与「无生长动画」一致）。
+                    proxy.scrollTo(cardID(model.items[index]), anchor: .center)
                 }
             }
             .frame(height: DS.Metrics.cardSelected.height + SummonPanelLayout.shadowPadding * 2)
@@ -228,9 +232,12 @@ private struct SummonCardView: View {
         }
         .padding(10)
         .frame(width: size.width, height: size.height, alignment: .topLeading)
+        // 内容一律裁到卡片轮廓内（在 glass/描边/阴影之前），任何内容都不外溢。
+        .clipShape(RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous))
+        // 不给选中卡加灰 tint：选中已由「放大 + 强调色描边」表达；
+        // 若再改背景明暗，切换时会明暗跳变、显得刺眼（闪）。
         .glassSurface(
             cornerRadius: DS.Metrics.cardCornerRadius,
-            tint: isSelected ? DS.Colors.selectedCardTint : nil,
             interactive: true
         )
         .overlay {
@@ -240,12 +247,8 @@ private struct SummonCardView: View {
                     .opacity(isActionLayer ? DS.Metrics.actionLayerRingOpacity : 1)
             }
         }
-        .shadow(
-            color: .black.opacity(isSelected ? 0.30 : 0.18),
-            radius: isSelected ? 28 : 18,
-            y: isSelected ? 18 : 10
-        )
-        .animation(MotionPolicy.animation(DS.Anim.cardGrow), value: isSelected)
+        // 不再叠显式 shadow：glassEffect 自带四周均匀的 Liquid Glass 投影。
+        // 选中不做生长动画：尺寸瞬时切换（回到最初方案），彻底消除生长过程中的下探。
         .opacity(isEntered ? 1 : 0)
         .offset(y: entranceOffset)
         .offset(y: isHovered ? -4 : 0)
@@ -336,8 +339,9 @@ private struct SummonCardView: View {
             isEntered = true
             return
         }
-        let full = Animation.spring(response: 0.45, dampingFraction: 0.80)
-            .delay(Double(index) * DS.Anim.entranceStagger)
+        // 错开延时封顶，卡片多时末卡也不至于迟迟才动。
+        let full = Animation.spring(response: 0.30, dampingFraction: 0.82)
+            .delay(Double(min(index, 6)) * DS.Anim.entranceStagger)
         withAnimation(MotionPolicy.animation(full)) {
             isEntered = true
         }
@@ -389,20 +393,24 @@ private struct ImageCardContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(DS.Colors.placeholderFill)
-                if let thumbnail {
-                    Image(decorative: thumbnail, scale: 1)
-                        .resizable()
-                        .scaledToFill()
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else {
-                    Image(systemName: presentation.symbolName)
-                        .font(.system(size: isSelected ? 38 : 30, weight: .light))
-                        .foregroundStyle(.secondary)
+            // Color.clear 定尺（受卡片约束），图片作 overlay：overlay 恒等于底视图尺寸，
+            // 因此超宽图（如 1400×128）scaledToFill 只会在内部溢出、被 clipShape 裁掉，
+            // 绝不会撑大布局顶出卡片。ZStack 会取最大子视图尺寸，故不能用。
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    if let thumbnail {
+                        Image(decorative: thumbnail, scale: 1)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Image(systemName: presentation.symbolName)
+                            .font(.system(size: isSelected ? 38 : 30, weight: .light))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            }
+                .background(DS.Colors.placeholderFill)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             if isSelected {
                 Text(presentation.body)
                     .font(DS.Typography.cardMeta)
@@ -551,10 +559,11 @@ private struct SummonHintPill: View {
     var body: some View {
         HStack(spacing: 14) {
             hint("←→", "选择")
-            hint("↓", "动作")
-            hint("⏎", "/ 点击选中卡 粘贴")
+            if let digitKey = Self.digitHintKey { hint(digitKey, "快速粘贴") }
+            hint("⏎", "/ 点击 粘贴")
             hint("⌥⏎", "纯文本粘贴")
             hint("Tab", "分词")
+            hint("打字", "搜索")
             hint("esc", "关闭")
         }
         .font(.system(size: 11))
@@ -563,6 +572,15 @@ private struct SummonHintPill: View {
         .padding(.vertical, 7)
         .fixedSize()
         .glassSurface(cornerRadius: 999)
+    }
+
+    /// 快速粘贴的按键提示，随「数字修饰键」设置变化（默认 ⌘1~9）。
+    private static var digitHintKey: String? {
+        switch Settings.digitModifier {
+        case .none: "1~9"
+        case .cmd: "⌘1~9"
+        case .opt: "⌥1~9"
+        }
     }
 
     private func hint(_ key: String, _ label: String) -> some View {

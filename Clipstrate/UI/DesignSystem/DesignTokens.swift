@@ -42,12 +42,13 @@ enum DS {
     }
 
     enum Anim {
-        /// 卡片生长（未选中→选中）过渡（01 §3.2：0.28s spring）。
-        static let cardGrow = Animation.spring(response: 0.28, dampingFraction: 0.82)
-        /// 进场：自基线上浮 26pt + scale 0.92→1，逐张错开 45ms（01 §3.2）。
-        static let entranceRise: CGFloat = 26
-        static let entranceScale: CGFloat = 0.92
-        static let entranceStagger: Double = 0.045
+        /// 卡片生长（未选中→选中）过渡：更快、几乎不过冲（高 damping），
+        /// 避免弹簧过冲造成「先放大过头再回弹/下探」。
+        static let cardGrow = Animation.spring(response: 0.22, dampingFraction: 0.92)
+        /// 进场：自基线上浮 20pt + scale 0.94→1，逐张错开 22ms（收紧后更利落）。
+        static let entranceRise: CGFloat = 20
+        static let entranceScale: CGFloat = 0.94
+        static let entranceStagger: Double = 0.022
         /// 关闭反向 0.15s。
         static let closeDuration: Double = 0.15
         /// 描边淡化过渡（01 §3.3：0.2s）。

@@ -35,7 +35,16 @@ enum SelectionGrabber {
         guard let primary = NSScreen.screens.first(where: { $0.frame.origin == .zero }) ?? NSScreen.screens.first else {
             return nil
         }
-        return Self.flipY(quartz: quartzRect, primaryHeight: primary.frame.height)
+        let flipped = Self.flipY(quartz: quartzRect, primaryHeight: primary.frame.height)
+        // 校验：高度为 0（无真实插入点）或中心不落在任何屏幕内（坐标可疑——某些 App 的
+        // 浮窗/小窗会返回错误 bounds）→ 判为无效返回 nil，由上层回退到鼠标位置，
+        // 避免面板窜到另一块屏幕底部（微信小窗触发过）。
+        let center = CGPoint(x: flipped.midX, y: flipped.midY)
+        guard flipped.height > 0,
+              NSScreen.screens.contains(where: { $0.frame.contains(center) }) else {
+            return nil
+        }
+        return flipped
     }
 
     /// Quartz 全局坐标（top-left 原点，y 向下）→ Cocoa（bottom-left，y 向上）。纯函数，便于单测。

@@ -1,43 +1,41 @@
 import AppKit
 import SwiftUI
 
+/// 侧栏分区图标：极简单色线性符号 + 一枚 Liquid Glass 薄片，
+/// 取代旧的彩色渐变方块。随选中 / 窗口激活态调整前景与底片。
 @MainActor
 struct SettingsSidebarIcon: View {
     let section: SettingsSection
-    @Environment(\.colorScheme) private var colorScheme
+    var selected = false
+    var active = true
 
     var body: some View {
-        let rgb = section.tintRGB
-        let nsTint = NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
-        let bright = nsTint.blended(withFraction: 0.45, of: .white) ?? nsTint
-        let dark = nsTint.blended(withFraction: 0.18, of: .black) ?? nsTint
+        Image(systemName: section.symbol)
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundStyle(symbolColor)
+            .frame(width: 22, height: 22)
+            .background(chip)
+    }
 
-        ZStack {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(nsColor: bright), Color(nsColor: nsTint), Color(nsColor: dark)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            Image(systemName: section.symbol)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.3), radius: 1, y: 0.5)
+    private var symbolColor: Color {
+        if selected { return active ? .white : .primary }
+        return active ? DS.Colors.secondaryText : DS.Colors.secondaryText.opacity(0.45)
+    }
+
+    @ViewBuilder
+    private var chip: some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        if selected {
+            // 选中行底色已是强调 / 灰，图标叠一层半透明白霜片贴合底色。
+            shape.fill(.white.opacity(active ? 0.20 : 0.10))
+        } else {
+            // 未选中：极简玻璃薄片 + 发丝描边，弱存在感。
+            shape
+                .fill(Color.primary.opacity(0.05))
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                .glassSurface(cornerRadius: 6)
+                .opacity(active ? 1 : 0.6)
         }
-        .frame(width: 22, height: 22)
-        .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(.white.opacity(colorScheme == .dark ? 0.22 : 0.45), lineWidth: 0.5)
-        }
-        .overlay(alignment: .top) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.34), lineWidth: 1)
-                .mask(Rectangle().frame(height: 11).frame(maxHeight: .infinity, alignment: .top))
-        }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.22), radius: 2.5, y: 1)
-        .glassSurface(cornerRadius: 7)
     }
 }
 
@@ -76,6 +74,36 @@ struct SettingsRow<Control: View>: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .frame(minHeight: 38)
+    }
+}
+
+/// 开关行：整行标签区域都可点击切换（不再要求精准命中右侧小开关）。
+/// 用原生 `Toggle` + `.switch` 样式，标签铺满行宽，点标签即切换（macOS 惯例）。
+@MainActor
+struct SettingsToggleRow: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    init(_ title: String, isOn: Binding<Bool>) {
+        self.title = title
+        self._isOn = isOn
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title).font(.system(size: 13))
+            Spacer(minLength: 20)
+            // 开关只作视觉呈现，命中交给整行手势，避免「开关切一次 + 手势又切一次」双重触发。
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .allowsHitTesting(false)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .frame(minHeight: 38)
+        .contentShape(Rectangle())
+        .onTapGesture { isOn.toggle() }
     }
 }
 

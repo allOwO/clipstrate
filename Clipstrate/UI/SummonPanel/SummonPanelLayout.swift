@@ -2,7 +2,13 @@ import CoreGraphics
 
 /// 变体 C 的纯布局计算，供 NSPanel 尺寸与 SwiftUI 内容共用。
 enum SummonPanelLayout {
-    static let maximumItemCount = 9
+    /// 浏览显示的绝对上限（用户可在设置里调，但不超过此值，见 Settings.panelItemCount）。
+    static let maximumItemCount = 200
+    /// 设置里可选的「面板显示条数」档位。
+    static let itemCountOptions = [20, 50, 100, 200]
+    /// 搜索结果上限，与显示上限解耦：搜索本就扫全库，这里给更大的返回上限，
+    /// 避免命中很多时把较旧的匹配截断（>此值才会截断，一般够用）。
+    static let searchResultLimit = 300
     static let screenInset: CGFloat = 16
     static let shadowPadding: CGFloat = 16
     static let verticalPadding: CGFloat = 8

@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.returnAction) private var returnActionRaw = ClickAction.paste.rawValue
     @AppStorage(SettingsKey.plainTextDefault) private var plainTextDefault = false
     @AppStorage(SettingsKey.panelStyle) private var panelStyleRaw = PanelStyle.glass.rawValue
+    @AppStorage(SettingsKey.panelItemCount) private var panelItemCount = 50
     @AppStorage(SettingsKey.diskCapMB) private var diskCapMB = 512
     @AppStorage(SettingsKey.retention) private var retentionRaw = Retention.month.rawValue
     @AppStorage(SettingsKey.backupAutoICloud) private var backupAutoICloud = false
@@ -27,6 +28,13 @@ struct SettingsView: View {
     /// 点侧栏后，在目标分区的几何位置真正稳定前冻结 scroll-spy。
     /// 不能依赖无动画事务的 completion：它可能早于 offset preference 更新完成。
     @State private var programmaticScrollTarget: SettingsSection?
+    /// 权限状态（实时轮询）：系统对运行中进程的授权状态有缓存，
+    /// 但在设置里持续刷新可让用户在系统设置改动后尽快看到变化。
+    @State private var pasteboardAllowed = PrivacyGate.isPasteboardAllowed
+    @State private var axTrusted = AXPermission.isTrusted
+    private let permissionPoll = Timer.publish(every: 0.8, on: .main, in: .common).autoconnect()
+    /// 窗口激活态：失焦时把选中高亮转为系统式灰色（原生窗口非激活观感）。
+    @Environment(\.controlActiveState) private var controlActiveState
 
     private let actions: SettingsActions
     private let loginItemManager: any LoginItemManaging
@@ -53,6 +61,7 @@ struct SettingsView: View {
         }
         .frame(minWidth: 680, minHeight: 480)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onReceive(permissionPoll) { _ in refreshPermissions() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshLoginItemStatus()
         }
@@ -66,6 +75,7 @@ struct SettingsView: View {
         .onChange(of: returnActionRaw) { _, _ in changed(SettingsKey.returnAction) }
         .onChange(of: plainTextDefault) { _, _ in changed(SettingsKey.plainTextDefault) }
         .onChange(of: panelStyleRaw) { _, _ in changed(SettingsKey.panelStyle) }
+        .onChange(of: panelItemCount) { _, _ in changed(SettingsKey.panelItemCount) }
         .onChange(of: diskCapMB) { _, _ in changed(SettingsKey.diskCapMB) }
         .onChange(of: retentionRaw) { _, _ in changed(SettingsKey.retention) }
         .onChange(of: backupAutoICloud) { _, _ in changed(SettingsKey.backupAutoICloud) }
@@ -84,21 +94,31 @@ struct SettingsView: View {
                         scrollTarget = section
                     } label: {
                         HStack(spacing: 8) {
-                            SettingsSidebarIcon(section: section)
+                            SettingsSidebarIcon(
+                                section: section,
+                                selected: currentSection == section,
+                                active: windowActive
+                            )
                             Text(section.title)
                                 .font(.system(size: 13))
                             Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
-                        .foregroundStyle(currentSection == section ? Color.white : Color.primary)
+                        .foregroundStyle(sidebarForeground(selected: currentSection == section))
+                        // 交叉淡入淡出（飞书式）：旧选中淡出、新选中淡入，
+                        // 用透明度而非条件底色，避免硬切/闪烁。失焦时高亮转灰。
                         .background(
-                            currentSection == section ? DS.Colors.accent : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(sidebarHighlightFill)
+                                .opacity(currentSection == section ? 1 : 0)
                         )
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(currentSection == section ? .isSelected : [])
+                    .animation(MotionPolicy.animation(.easeInOut(duration: 0.18)), value: currentSection)
+                    .animation(MotionPolicy.animation(.easeInOut(duration: 0.18)), value: controlActiveState)
                 }
             }
             .padding(.horizontal, 10)
@@ -106,6 +126,20 @@ struct SettingsView: View {
             .padding(.bottom, 12)
         }
         .frame(width: 188)
+    }
+
+    private var windowActive: Bool { controlActiveState != .inactive }
+
+    /// 选中高亮底色：窗口激活用强调色，失焦转系统式灰（原生非激活观感）。
+    private var sidebarHighlightFill: Color {
+        windowActive ? DS.Colors.accent : Color.secondary.opacity(0.28)
+    }
+
+    /// 选中项文字：激活时白字压强调色；失焦（灰底）回落主文字色。
+    /// 非选中项文字随窗口失焦一起转灰，贴合 macOS 原生非激活观感。
+    private func sidebarForeground(selected: Bool) -> Color {
+        guard selected else { return windowActive ? .primary : DS.Colors.secondaryText }
+        return windowActive ? .white : .primary
     }
 
     private var settingsPage: some View {
@@ -118,6 +152,7 @@ struct SettingsView: View {
                     displaySection.id(SettingsSection.display)
                     storageSection.id(SettingsSection.storage)
                     backupSection.id(SettingsSection.backup)
+                    permissionsSection.id(SettingsSection.permissions)
                     aboutSection.id(SettingsSection.about)
                 }
                 .padding(.horizontal, 20)
@@ -138,7 +173,8 @@ struct SettingsView: View {
             }
             .onChange(of: scrollTarget) { _, target in
                 guard let target else { return }
-                withAnimation(MotionPolicy.animation(.easeInOut(duration: 0.24))) {
+                // 直接跳到分区，无滚动动画（点栏目瞬间定位，不要滑动/闪烁）。
+                withAnimation(nil) {
                     proxy.scrollTo(target, anchor: .top)
                 }
                 scrollTarget = nil
@@ -146,12 +182,88 @@ struct SettingsView: View {
         }
     }
 
+    private var permissionsSection: some View {
+        section(.permissions) {
+            SettingsGroup {
+                permissionRow(
+                    title: "剪贴板访问",
+                    detail: "读取剪贴板以保存复制历史。",
+                    granted: pasteboardAllowed,
+                    statusOn: "已允许",
+                    statusOff: "未允许",
+                    primaryTitle: "请求访问",
+                    primaryAction: { PrivacyGate.triggerPasteboardPrompt() },
+                    secondaryTitle: "打开系统设置",
+                    secondaryAction: { PrivacyGate.openPrivacySettings() }
+                )
+                SettingsDivider()
+                permissionRow(
+                    title: "辅助功能",
+                    detail: "自动 ⌘V 粘贴、把面板定位到光标、划词拆词。",
+                    granted: axTrusted,
+                    statusOn: "已授权",
+                    statusOff: "未授权",
+                    primaryTitle: "请求授权",
+                    primaryAction: { AXPermission.promptIfNeeded() },
+                    secondaryTitle: "打开系统设置",
+                    secondaryAction: { AXPermission.openAccessibilitySettings() }
+                )
+            }
+            SettingsNote(text: "在系统设置里勾选后，若这里仍未变绿：系统对运行中进程的授权状态有缓存，重启一次 Clipstrate 即可生效。")
+        }
+    }
+
+    /// 单条权限行：左侧标题 + 说明 + 实时状态灯；未授权时右侧给出操作按钮。
+    @ViewBuilder
+    private func permissionRow(
+        title: String,
+        detail: String,
+        granted: Bool,
+        statusOn: String,
+        statusOff: String,
+        primaryTitle: String,
+        primaryAction: @escaping () -> Void,
+        secondaryTitle: String?,
+        secondaryAction: (() -> Void)?
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(granted ? Color.green : Color.orange)
+                    Text(title).font(.system(size: 13, weight: .medium))
+                    Text(granted ? statusOn : statusOff)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(granted ? Color.green : Color.orange)
+                }
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(DS.Colors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            if !granted {
+                HStack(spacing: 6) {
+                    if let secondaryTitle, let secondaryAction {
+                        Button(secondaryTitle, action: secondaryAction)
+                            .buttonStyle(.bordered)
+                    }
+                    Button(primaryTitle, action: primaryAction)
+                        .buttonStyle(.borderedProminent)
+                }
+                .controlSize(.small)
+                .fixedSize()
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(minHeight: 48)
+    }
+
     private var generalSection: some View {
         section(.general) {
             SettingsGroup {
-                SettingsRow("登录时启动") {
-                    Toggle("", isOn: launchAtLoginBinding).labelsHidden()
-                }
+                SettingsToggleRow("登录时启动", isOn: launchAtLoginBinding)
             }
             if let loginItemError {
                 SettingsNote(text: "登录项更新失败：\(loginItemError)")
@@ -225,9 +337,7 @@ struct SettingsView: View {
                     actionPicker(selection: returnActionBinding)
                 }
                 SettingsDivider()
-                SettingsRow("粘贴为纯文本（全局默认）") {
-                    Toggle("", isOn: $plainTextDefault).labelsHidden()
-                }
+                SettingsToggleRow("粘贴为纯文本（全局默认）", isOn: $plainTextDefault)
             }
             IgnoreListSettingsView(store: ignoreListStore)
         }
@@ -251,13 +361,23 @@ struct SettingsView: View {
                     }
                 }
                 SettingsDivider()
+                SettingsRow("唤出面板显示条数") {
+                    Picker("", selection: $panelItemCount) {
+                        ForEach(SummonPanelLayout.itemCountOptions, id: \.self) { count in
+                            Text("\(count) 条").tag(count)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 110)
+                }
+                SettingsDivider()
                 SettingsRow("外观") {
                     Text("跟随系统（浅色 / 深色）")
                         .font(.system(size: 12))
                         .foregroundStyle(DS.Colors.secondaryText)
                 }
             }
-            SettingsNote(text: "兼容模式适配旧版 macOS。")
+            SettingsNote(text: "面板只显示最近 N 条；搜索始终扫描全部历史,不受此限。兼容模式适配旧版 macOS。")
         }
     }
 
@@ -310,10 +430,8 @@ struct SettingsView: View {
                         .foregroundStyle(DS.Colors.secondaryText)
                 }
                 SettingsDivider()
-                SettingsRow("自动备份") {
-                    Toggle("", isOn: $backupAutoICloud).labelsHidden()
-                        .disabled(!isBackupAvailable)
-                }
+                SettingsToggleRow("自动备份", isOn: $backupAutoICloud)
+                    .disabled(!isBackupAvailable)
                 SettingsDivider()
                 HStack(spacing: 8) {
                     Button("立即备份", action: actions.backupNow)
@@ -330,17 +448,11 @@ struct SettingsView: View {
 
             SettingsGroupTitle(title: "导入 / 导出")
             SettingsGroup {
-                SettingsRow("配置信息") {
-                    Toggle("", isOn: $backupIncludeSettings).labelsHidden()
-                }
+                SettingsToggleRow("配置信息", isOn: $backupIncludeSettings)
                 SettingsDivider()
-                SettingsRow("忽略名单") {
-                    Toggle("", isOn: $backupIncludeIgnoreList).labelsHidden()
-                }
+                SettingsToggleRow("忽略名单", isOn: $backupIncludeIgnoreList)
                 SettingsDivider()
-                SettingsRow("剪贴板历史数据库") {
-                    Toggle("", isOn: $backupIncludeHistory).labelsHidden()
-                }
+                SettingsToggleRow("剪贴板历史数据库", isOn: $backupIncludeHistory)
                 SettingsDivider()
                 HStack(spacing: 8) {
                     Button("导入…", action: actions.importBackup)
@@ -366,13 +478,43 @@ struct SettingsView: View {
                     Text("版本 \(Bundle.main.shortVersion)（\(Bundle.main.buildNumber)）")
                         .font(.system(size: 12))
                         .foregroundStyle(DS.Colors.secondaryText)
-                    Text("数据全本地存储 · 不联网 · © 2026")
+                    HStack(spacing: 4) {
+                        Text("作者").foregroundStyle(DS.Colors.secondaryText)
+                        Text("allOwO").fontWeight(.medium)
+                    }
+                    .font(.system(size: 12))
+                    if let repo = URL(string: "https://github.com/allOwO/clipstrate") {
+                        Link(destination: repo) {
+                            Label("github.com/allOwO/clipstrate", systemImage: "chevron.left.forwardslash.chevron.right")
+                                .font(.system(size: 12))
+                        }
+                    }
+                    Text("数据全本地存储 · 不联网 · © 2026 allOwO")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                         .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 26)
+                .padding(.vertical, 24)
+            }
+
+            SettingsGroupTitle(title: "许可协议")
+            SettingsGroup {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("免费供个人 / 非商业用途使用。")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("禁止用于商业目的或转售 —— PolyForm Noncommercial License 1.0.0。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DS.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let license = URL(string: "https://polyformproject.org/licenses/noncommercial/1.0.0/") {
+                        Link("查看协议全文", destination: license)
+                            .font(.system(size: 11))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
             }
         }
     }
@@ -489,6 +631,13 @@ struct SettingsView: View {
         if synchronized.section != currentSection {
             currentSection = synchronized.section
         }
+    }
+
+    private func refreshPermissions() {
+        let allowed = PrivacyGate.isPasteboardAllowed
+        let trusted = AXPermission.isTrusted
+        if allowed != pasteboardAllowed { pasteboardAllowed = allowed }
+        if trusted != axTrusted { axTrusted = trusted }
     }
 
     private func refreshLoginItemStatus() {

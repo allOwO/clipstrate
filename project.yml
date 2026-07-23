@@ -24,6 +24,11 @@ targets:
     dependencies:
       - package: GRDB
       - package: KeyboardShortcuts
+    # 签名走可选包含的 xcconfig：本地存在 Signing.local.xcconfig 时用稳定证书
+    # （TCC 授权跨重编保留）；不存在则回退 Xcode 默认 ad-hoc，其他机器/CI 不受影响。
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.allowo.clipstrate

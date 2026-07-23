@@ -15,6 +15,7 @@ enum SettingsKey {
     static let plainTextDefault = "interaction.plainTextDefault"
     // display
     static let panelStyle = "display.panelStyle"
+    static let panelItemCount = "display.itemCount"
     // store
     static let diskCapMB = "store.diskCapMB"
     static let retention = "store.retention"
@@ -76,6 +77,7 @@ enum Settings {
             SettingsKey.returnAction: ClickAction.paste.rawValue,
             SettingsKey.plainTextDefault: false,
             SettingsKey.panelStyle: PanelStyle.glass.rawValue,
+            SettingsKey.panelItemCount: 50,
             SettingsKey.diskCapMB: 512,
             SettingsKey.retention: Retention.month.rawValue,
             SettingsKey.backupAutoICloud: false,
@@ -105,6 +107,12 @@ enum Settings {
     static var launchAtLogin: Bool { store.bool(forKey: SettingsKey.launchAtLogin) }
     static var plainTextDefault: Bool { store.bool(forKey: SettingsKey.plainTextDefault) }
     static var diskCapMB: Int { store.integer(forKey: SettingsKey.diskCapMB) }
+
+    /// 唤出面板默认展示的最近条数（限幅 10–200；搜索不受此限，见 searchResultLimit）。
+    static var panelItemCount: Int {
+        let value = store.integer(forKey: SettingsKey.panelItemCount)
+        return value == 0 ? 50 : min(max(value, 10), 200)
+    }
 
     static var digitModifier: DigitModifier {
         DigitModifier(rawValue: store.string(forKey: SettingsKey.digitModifier) ?? "") ?? .cmd

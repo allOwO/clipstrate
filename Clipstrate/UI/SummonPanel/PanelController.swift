@@ -12,6 +12,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var globalClickMonitor: Any?
     private var hideTask: Task<Void, Never>?
     private var placementAnchor: CGRect?
+    /// 唤出前的前台 App：面板为支持直接输入法会激活本 App、抢走对方焦点，
+    /// 粘贴前需把它重新激活，合成的 ⌘V 才会落回用户原来的输入框。
+    private var previousApp: NSRunningApplication?
     private(set) var isVisible = false
 
     override convenience init() {
@@ -64,6 +67,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         let signpost = Log.signposter.beginInterval("summon.show")
         defer { Log.signposter.endInterval("summon.show", signpost) }
 
+        // 先记住当前前台 App（此刻尚未激活本 App），供粘贴后恢复焦点用。
+        if let front = NSWorkspace.shared.frontmostApplication, front != .current {
+            previousApp = front
+        }
+
         model.beginPresentation()
         placementAnchor = SelectionGrabber.caretRect()
             ?? CGRect(origin: NSEvent.mouseLocation, size: .zero)
@@ -87,6 +95,20 @@ final class PanelController: NSObject, NSWindowDelegate {
             guard !Task.isCancelled else { return }
             self?.panel.orderOut(nil)
         }
+    }
+
+    /// 立即收起（无退场延时）：用于自动粘贴前——面板本是 key window，
+    /// 必须先 orderOut 把 key 焦点交回原 App，随后合成的 ⌘V 才会落到目标输入框。
+    func hideImmediately() {
+        guard isVisible else { return }
+        removeMonitors()
+        isVisible = false
+        model.endPresentation()
+        hideTask?.cancel()
+        hideTask = nil
+        panel.orderOut(nil)
+        // 把焦点还给唤出前的 App，随后合成的 ⌘V 才落回它的输入框。
+        previousApp?.activate()
     }
 
     func setChopOverlayBuilder(_ builder: @escaping ChopOverlayBuilder) {

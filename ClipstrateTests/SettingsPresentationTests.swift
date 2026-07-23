@@ -5,7 +5,7 @@ final class SettingsPresentationTests: XCTestCase {
     func testSectionOrderAndTitlesMatchSpecification() {
         XCTAssertEqual(
             SettingsSection.allCases.map(\.title),
-            ["通用", "快捷键", "交互", "显示", "历史与存储", "数据备份", "关于"]
+            ["通用", "快捷键", "交互", "显示", "历史与存储", "数据备份", "权限", "关于"]
         )
     }
 
@@ -45,7 +45,7 @@ final class SettingsPresentationTests: XCTestCase {
     }
 
     func testSettingsCatalogCoversEveryWindowUserDefaultsKey() {
-        XCTAssertEqual(SettingsCatalog.windowKeys.count, 13)
+        XCTAssertEqual(SettingsCatalog.windowKeys.count, 14)
         XCTAssertEqual(Set(SettingsCatalog.windowKeys).count, SettingsCatalog.windowKeys.count)
         XCTAssertTrue(SettingsCatalog.windowKeys.contains(SettingsKey.launchAtLogin))
         XCTAssertTrue(SettingsCatalog.windowKeys.contains(SettingsKey.retention))

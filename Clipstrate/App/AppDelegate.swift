@@ -47,12 +47,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let paste else { return }
                 // 数字键走「按下后」设置，⏎/点击走「双击/回车」设置（01 §3.5）。
                 let action = source == .press ? Settings.pressAction : Settings.returnAction
+                // 面板是 key window：要自动粘贴，须先收起面板把 key 焦点交回原 App，
+                // 否则合成的 ⌘V 会落在面板上（只复制不粘）。
+                let willPaste = action == .paste && AXPermission.isTrusted
+                if willPaste {
+                    panel?.hideImmediately()
+                    try? await Task.sleep(for: .milliseconds(60))   // 等原 App 重新激活、焦点归位
+                } else {
+                    panel?.hide()
+                }
                 let result = await paste.perform(
                     item: item,
                     plainText: plainText || Settings.plainTextDefault,
                     action: action
                 )
-                if result.didWritePasteboard { panel?.hide() }
                 switch result {
                 case .copiedNeedsManualPaste: ToastPresenter.shared.show("已复制，请 ⌘V 粘贴")
                 case .copied: ToastPresenter.shared.show("已复制 ✓")

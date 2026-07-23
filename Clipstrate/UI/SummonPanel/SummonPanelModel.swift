@@ -107,12 +107,8 @@ final class SummonPanelModel: ObservableObject {
             return false
         }
 
-        // 搜索态下裸数字并入查询（即使当前无匹配也要能继续输入，须在空 items 判断之前）。
-        if case .digit(let oneBased) = command, !searchQuery.isEmpty {
-            appendSearchCharacter(Character("\(oneBased)"))
-            return true
-        }
-
+        // 数字命令只在「数字修饰键」满足时才产生（默认 ⌘+数字）；裸数字已放行给搜索框，
+        // 不再走这里。因此 .digit 一律表示「快速粘贴第 N 条」——即便在搜索结果中也快贴当前第 N 条。
         guard !items.isEmpty else { return true }
         switch command {
         case .moveLeft:
@@ -146,15 +142,12 @@ final class SummonPanelModel: ObservableObject {
         pasteSelected(plainText: false, source: .press)
     }
 
+    /// 单击任意卡片 = 直接粘贴（默认动作，走 returnAction）。不再需要「先选中再点一次」。
     func activateCard(at index: Int) {
         guard items.indices.contains(index) else { return }
-        if index == selectedIndex {
-            focus = .card
-            pasteSelected(plainText: false, source: .return)
-        } else {
-            selectedIndex = index
-            focus = .card
-        }
+        selectedIndex = index
+        focus = .card
+        pasteSelected(plainText: false, source: .return)
     }
 
     func activateAction(_ index: Int) {
@@ -244,9 +237,10 @@ final class SummonPanelModel: ObservableObject {
         guard let historyStore else { return }
         let results: [ClipItem]
         if query.isEmpty {
-            results = (try? await historyStore.page(limit: SummonPanelLayout.maximumItemCount)) ?? []
+            results = (try? await historyStore.page(limit: Settings.panelItemCount)) ?? []
         } else {
-            results = (try? await historyStore.search(query, limit: SummonPanelLayout.maximumItemCount)) ?? []
+            // 搜索用更大的结果上限（与浏览显示解耦），避免命中较多时截断较旧匹配。
+            results = (try? await historyStore.search(query, limit: SummonPanelLayout.searchResultLimit)) ?? []
         }
         guard query == searchQuery else { return }   // 期间查询词已变，丢弃过期结果
         items = results
@@ -270,7 +264,7 @@ final class SummonPanelModel: ObservableObject {
         refreshTask?.cancel()
         refreshTask = Task { [weak self, historyStore] in
             do {
-                let page = try await historyStore.page(limit: SummonPanelLayout.maximumItemCount)
+                let page = try await historyStore.page(limit: Settings.panelItemCount)
                 guard !Task.isCancelled, let self else { return }
                 let previousCount = items.count
                 items = page

@@ -1,0 +1,7 @@
+// Clipstrate 代码签名基础配置（已提交，可移植）。
+//
+// 真正的本地签名身份写在未跟踪的 Signing.local.xcconfig（见 .git/info/exclude）。
+// 使用可选包含：本地文件存在时启用稳定的自签名证书，使辅助功能等 TCC 授权
+// 跨重新构建保留；文件缺失（其他机器 / CI）时本包含被跳过，回退 Xcode 默认的
+// 本地 ad-hoc 签名，构建不受影响。
+#include? "Signing.local.xcconfig"

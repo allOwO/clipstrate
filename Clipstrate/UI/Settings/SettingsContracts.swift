@@ -8,6 +8,7 @@ enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     case display
     case storage
     case backup
+    case permissions
     case about
 
     var id: Self { self }
@@ -20,31 +21,22 @@ enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .display: "显示"
         case .storage: "历史与存储"
         case .backup: "数据备份"
+        case .permissions: "权限"
         case .about: "关于"
         }
     }
 
+    /// 线性（非 fill）符号：配合极简单色 + 玻璃薄片的侧栏图标。
     var symbol: String {
         switch self {
-        case .general: "gearshape.fill"
+        case .general: "gearshape"
         case .shortcuts: "command"
         case .interaction: "arrow.left.arrow.right"
         case .display: "rectangle.on.rectangle"
         case .storage: "clock.arrow.circlepath"
-        case .backup: "icloud.fill"
+        case .backup: "icloud"
+        case .permissions: "lock.shield"
         case .about: "scissors"
-        }
-    }
-
-    var tintRGB: (red: Double, green: Double, blue: Double) {
-        switch self {
-        case .general: (0x8e / 255, 0x8e / 255, 0x93 / 255)
-        case .shortcuts: (1, 0x9f / 255, 0x0a / 255)
-        case .interaction: (0xbf / 255, 0x5a / 255, 0xf2 / 255)
-        case .display: (0x0a / 255, 0x84 / 255, 1)
-        case .storage: (0x30 / 255, 0xb0 / 255, 0xc7 / 255)
-        case .backup: (0x34 / 255, 0xc7 / 255, 0x59 / 255)
-        case .about: (1, 0x37 / 255, 0x5f / 255)
         }
     }
 }
@@ -77,6 +69,7 @@ enum SettingsCatalog {
         SettingsKey.returnAction,
         SettingsKey.plainTextDefault,
         SettingsKey.panelStyle,
+        SettingsKey.panelItemCount,
         SettingsKey.diskCapMB,
         SettingsKey.retention,
         SettingsKey.backupAutoICloud,
