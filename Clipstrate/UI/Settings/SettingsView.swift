@@ -5,7 +5,6 @@ import SwiftUI
 @MainActor
 struct SettingsView: View {
     @AppStorage(SettingsKey.launchAtLogin) private var launchAtLogin = true
-    @AppStorage(SettingsKey.menuBarIconVisible) private var menuBarIconVisible = true
     @AppStorage(SettingsKey.soundEnabled) private var soundEnabled = false
     @AppStorage(SettingsKey.digitModifier) private var digitModifierRaw = DigitModifier.none.rawValue
     @AppStorage(SettingsKey.pressAction) private var pressActionRaw = ClickAction.paste.rawValue
@@ -57,7 +56,6 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { onSectionChange(currentSection) }
         .onChange(of: currentSection) { _, section in onSectionChange(section) }
-        .onChange(of: menuBarIconVisible) { _, _ in changed(SettingsKey.menuBarIconVisible) }
         .onChange(of: soundEnabled) { _, _ in changed(SettingsKey.soundEnabled) }
         .onChange(of: digitModifierRaw) { _, _ in changed(SettingsKey.digitModifier) }
         .onChange(of: pressActionRaw) { _, _ in changed(SettingsKey.pressAction) }
@@ -150,10 +148,6 @@ struct SettingsView: View {
             SettingsGroup {
                 SettingsRow("登录时启动") {
                     Toggle("", isOn: launchAtLoginBinding).labelsHidden()
-                }
-                SettingsDivider()
-                SettingsRow("在菜单栏显示图标") {
-                    Toggle("", isOn: $menuBarIconVisible).labelsHidden()
                 }
                 SettingsDivider()
                 SettingsRow("开启剪贴板音效") {

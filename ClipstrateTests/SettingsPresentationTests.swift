@@ -45,7 +45,7 @@ final class SettingsPresentationTests: XCTestCase {
     }
 
     func testSettingsCatalogCoversEveryWindowUserDefaultsKey() {
-        XCTAssertEqual(SettingsCatalog.windowKeys.count, 16)
+        XCTAssertEqual(SettingsCatalog.windowKeys.count, 15)
         XCTAssertEqual(Set(SettingsCatalog.windowKeys).count, SettingsCatalog.windowKeys.count)
         XCTAssertTrue(SettingsCatalog.windowKeys.contains(SettingsKey.launchAtLogin))
         XCTAssertTrue(SettingsCatalog.windowKeys.contains(SettingsKey.retention))

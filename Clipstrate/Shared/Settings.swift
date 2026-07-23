@@ -7,7 +7,6 @@ import Foundation
 enum SettingsKey {
     // general
     static let launchAtLogin = "general.launchAtLogin"
-    static let menuBarIconVisible = "general.menuBarIconVisible"
     static let soundEnabled = "general.soundEnabled"
     // hotkey（快捷键本体由 KeyboardShortcuts 管理，见 T1.1；此处仅数字直贴修饰键）
     static let digitModifier = "hotkey.digitModifier"
@@ -74,7 +73,6 @@ enum Settings {
     static func registerDefaults() {
         store.register(defaults: [
             SettingsKey.launchAtLogin: true,
-            SettingsKey.menuBarIconVisible: true,
             SettingsKey.soundEnabled: false,
             SettingsKey.digitModifier: DigitModifier.none.rawValue,
             SettingsKey.pressAction: ClickAction.paste.rawValue,
@@ -96,7 +94,6 @@ enum Settings {
     // MARK: 读取
 
     static var launchAtLogin: Bool { store.bool(forKey: SettingsKey.launchAtLogin) }
-    static var menuBarIconVisible: Bool { store.bool(forKey: SettingsKey.menuBarIconVisible) }
     static var soundEnabled: Bool { store.bool(forKey: SettingsKey.soundEnabled) }
     static var autoClose: Bool { store.bool(forKey: SettingsKey.autoClose) }
     static var plainTextDefault: Bool { store.bool(forKey: SettingsKey.plainTextDefault) }

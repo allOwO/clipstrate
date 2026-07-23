@@ -11,7 +11,6 @@ final class SettingsTests: XCTestCase {
     func testBaselineDefaultsMatchSpecTable() {
         // 02 §5 默认值表
         XCTAssertTrue(Settings.launchAtLogin)
-        XCTAssertTrue(Settings.menuBarIconVisible)
         XCTAssertFalse(Settings.soundEnabled)
         XCTAssertTrue(Settings.autoClose)
         XCTAssertFalse(Settings.plainTextDefault)
