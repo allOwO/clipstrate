@@ -14,10 +14,11 @@ final class SummonPanelModel: ObservableObject {
     // 面板内搜索（type-to-search，01 §3.6）
     @Published private(set) var searchQuery = ""
     @Published private(set) var matchCount = 0
-    /// `/` 或点击搜索胶囊后升级为 key window 接管输入法（中文）——绑定搜索框焦点。
+    /// 面板显示期间预先聚焦隐藏输入客户端，中英文都可直接输入。
     @Published var imeInputActive = false
 
-    var isSearching: Bool { imeInputActive || !searchQuery.isEmpty }
+    /// 输入客户端可以常驻准备；只有实际存在查询词时才显示搜索胶囊、进入搜索态。
+    var isSearching: Bool { !searchQuery.isEmpty }
 
     var onLayoutChange: (() -> Void)?
     /// 由 Controller 完成 App 激活与 panel 置 key；View/Model 不直接操纵窗口。
@@ -164,6 +165,7 @@ final class SummonPanelModel: ObservableObject {
 
     func presentChopOverlay(for item: ClipItem) {
         guard item.kind == .text, !(item.plainText ?? "").isEmpty, let overlayBuilder else { return }
+        imeInputActive = false
         // overlay 完成（复制/粘贴/返回按钮）→ 关闭整个面板；esc 由面板监听器走 dismissOverlay 回卡片层。
         overlayView = overlayBuilder(ChopOverlayRequest(item: item)) { [weak self] in
             Task { @MainActor [weak self] in self?.onRequestClose?() }
@@ -175,6 +177,7 @@ final class SummonPanelModel: ObservableObject {
         guard overlayView != nil else { return }
         overlayView = nil
         focus = .card
+        if isPanelPresented { beginIMEInput() }
         onLayoutChange?()
     }
 
@@ -187,7 +190,7 @@ final class SummonPanelModel: ObservableObject {
         onLayoutChange?()
     }
 
-    /// TextField 绑定（IME 态：中文经 `/` 升级后由搜索框驱动查询）。
+    /// 隐藏 TextField 绑定：中英文输入及输入法提交文本都由此驱动查询。
     func setSearchQuery(_ text: String) {
         guard text != searchQuery else { return }
         searchQuery = text
@@ -207,7 +210,7 @@ final class SummonPanelModel: ObservableObject {
         return true
     }
 
-    /// `/` 或点击搜索胶囊：升级接管输入法（中文）。
+    /// 准备输入法客户端；面板显示时自动调用，点击搜索胶囊时也可恢复焦点。
     func beginIMEInput() {
         guard !imeInputActive else { return }
         imeInputActive = true
@@ -220,7 +223,6 @@ final class SummonPanelModel: ObservableObject {
         searchTask?.cancel()
         searchTask = nil
         searchQuery = ""
-        imeInputActive = false
         matchCount = 0
         selectedIndex = 0
         focus = .card

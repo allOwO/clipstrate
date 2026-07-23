@@ -51,9 +51,11 @@ final class SummonPanelSearchTests: XCTestCase {
 
     func testEscExitsSearchThenRequestsClose() {
         let model = SummonPanelModel(historyStore: store)
+        model.beginIMEInput()
         model.appendSearchCharacter("a")
         XCTAssertTrue(model.handle(.escape), "第一次 esc 清空搜索")
         XCTAssertFalse(model.isSearching)
+        XCTAssertTrue(model.imeInputActive, "清空查询后输入客户端保持就绪")
         XCTAssertEqual(model.searchQuery, "")
         XCTAssertFalse(model.handle(.escape), "第二次 esc 请求关闭")
     }
@@ -66,21 +68,21 @@ final class SummonPanelSearchTests: XCTestCase {
         XCTAssertEqual(model.searchQuery, "a")
     }
 
-    func testBeginIMEActivatesSearch() {
+    func testBeginIMEReadiesInputWithoutShowingEmptySearch() {
         let model = SummonPanelModel(historyStore: store)
         var requestCount = 0
         model.onIMEInputRequested = { requestCount += 1 }
         XCTAssertFalse(model.isSearching)
         model.beginIMEInput()
         XCTAssertTrue(model.imeInputActive)
-        XCTAssertTrue(model.isSearching)
+        XCTAssertFalse(model.isSearching, "空查询不显示搜索胶囊")
         XCTAssertEqual(requestCount, 1, "进入输入法态时请求 Controller 激活并置 key")
 
         model.beginIMEInput()
         XCTAssertEqual(requestCount, 1, "已在输入法态时不重复激活窗口")
     }
 
-    func testIMEFieldBecomesFirstResponderWhenCapsuleFirstAppears() async throws {
+    func testHiddenInputAcceptsDirectChineseTextBeforeCapsuleAppears() async throws {
         let model = SummonPanelModel(historyStore: nil)
         let panel = SummonPanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 320),
@@ -98,10 +100,29 @@ final class SummonPanelSearchTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
 
-        XCTAssertTrue(
-            panel.firstResponder is NSTextView,
-            "胶囊由 / 首次插入时，TextField 必须立即成为输入法的 first responder"
-        )
+        guard let fieldEditor = panel.firstResponder as? NSTextView else {
+            return XCTFail("面板显示后，隐藏 TextField 必须立即成为输入法的 first responder")
+        }
+        fieldEditor.insertText("中文", replacementRange: NSRange(location: NSNotFound, length: 0))
+        for _ in 0..<10 where model.searchQuery != "中文" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(model.searchQuery, "中文", "无需先按 / 即可把中文提交到查询")
+        XCTAssertTrue(model.isSearching)
+
+        _ = model.handle(.digit(1))
+        for _ in 0..<10 where fieldEditor.string != "中文1" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(fieldEditor.string, "中文1", "面板命令改写查询后须同步输入法的 field editor")
+
+        model.exitSearch()
+        for _ in 0..<10 where !fieldEditor.string.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        fieldEditor.insertText("新", replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertEqual(model.searchQuery, "新", "清空查询后继续输入不得带回旧文本")
     }
 
     func testTypingFiltersItems() async throws {

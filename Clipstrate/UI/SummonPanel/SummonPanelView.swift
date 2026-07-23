@@ -5,10 +5,11 @@ import SwiftUI
 /// 卡片视觉、两层焦点与三类内容渲染集中在此；搜索态由 T1.9 继续扩展。
 struct SummonPanelView: View {
     @ObservedObject var model: SummonPanelModel
-    @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
         ZStack {
+            searchInput
+
             cardLayer
                 .opacity(model.overlayView == nil ? 1 : DS.Metrics.overlayDimOpacity)
                 .allowsHitTesting(model.overlayView == nil)
@@ -21,6 +22,20 @@ struct SummonPanelView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// 常驻但不可见的唯一文本输入客户端。面板唤出后立即聚焦，因此输入法可直接开始组合；
+    /// 查询为空时搜索胶囊仍保持隐藏，不改变无框卡片条的视觉。
+    private var searchInput: some View {
+        SummonSearchInput(
+            text: Binding(
+                get: { model.searchQuery },
+                set: { model.setSearchQuery($0) }
+            ),
+            isActive: model.imeInputActive
+        )
+        .frame(width: 1, height: 1)
+        .opacity(0.001)
     }
 
     private var cardLayer: some View {
@@ -82,24 +97,18 @@ struct SummonPanelView: View {
             .frame(maxWidth: .infinity, minHeight: DS.Metrics.cardSelected.height)
     }
 
-    /// 搜索胶囊（01 §3.6）：🔍 + 查询词 + 匹配数。ASCII 态由 keyDown 直接并入（字段
-    /// 只显示但保持正常文字颜色）；点击或 `/` 升级为 IME 态（字段可编辑并聚焦，接管中文输入）。
+    /// 搜索胶囊（01 §3.6）：🔍 + 查询词 + 匹配数。输入由常驻隐藏 TextField 接收，
+    /// 胶囊仅负责显示，因此中英文都能从第一个字符直接搜索。
     private var searchCapsule: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-            TextField("搜索", text: Binding(
-                get: { model.searchQuery },
-                set: { model.setSearchQuery($0) }
-            ))
-            .textFieldStyle(.plain)
+            Text(model.searchQuery)
             .font(.system(size: 13))
             .foregroundStyle(.primary)
             .frame(minWidth: 60)
             .fixedSize()
-            .allowsHitTesting(model.imeInputActive)
-            .focused($searchFieldFocused)
             Text(model.items.isEmpty ? "无匹配" : "\(model.matchCount)")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -109,14 +118,79 @@ struct SummonPanelView: View {
         .glassSurface(cornerRadius: 999)
         .contentShape(Capsule())
         .onTapGesture { model.beginIMEInput() }
-        // `/` 会先切换模型，随后才把胶囊插入视图树；此时 onChange 不会补发初始值，
-        // 因而必须在首次挂载时显式聚焦，TextField 才能成为输入法的 text input client。
-        .onAppear {
-            if model.imeInputActive {
-                searchFieldFocused = true
+    }
+}
+
+/// SwiftUI 的透明 TextField 不保证会成为 first responder；显式使用 AppKit 文本输入客户端，
+/// 才能让拼音等输入法在第一个按键时收到 marked-text 组合事件。
+private struct SummonSearchInput: NSViewRepresentable {
+    @Binding var text: String
+    let isActive: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> SummonSearchTextField {
+        let field = SummonSearchTextField()
+        field.delegate = context.coordinator
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.stringValue = text
+        return field
+    }
+
+    func updateNSView(_ field: SummonSearchTextField, context: Context) {
+        context.coordinator.text = $text
+
+        let isComposing = (field.currentEditor() as? NSTextInputClient)?.hasMarkedText() ?? false
+        if field.stringValue != text, !isComposing {
+            field.stringValue = text
+            if let editor = field.currentEditor() {
+                editor.string = text
+                editor.selectedRange = NSRange(location: (text as NSString).length, length: 0)
             }
         }
-        .onChange(of: model.imeInputActive) { _, active in searchFieldFocused = active }
+        field.inputActive = isActive
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            text.wrappedValue = field.stringValue
+        }
+    }
+}
+
+@MainActor
+private final class SummonSearchTextField: NSTextField {
+    var inputActive = false {
+        didSet { updateFirstResponder() }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateFirstResponder()
+    }
+
+    private func updateFirstResponder() {
+        guard let window else { return }
+        if inputActive {
+            if currentEditor() == nil {
+                window.makeFirstResponder(self)
+            }
+        } else if let editor = currentEditor(), window.firstResponder === editor {
+            window.makeFirstResponder(nil)
+        }
     }
 }
 

@@ -72,6 +72,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.makeKey()                              // 接收键盘但不激活 App
         installMonitors()
         isVisible = true
+        model.beginIMEInput()                        // 中英文均可直接键入，无需先按 `/`
         Log.panel.info("summon panel shown")
     }
 
@@ -153,12 +154,14 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         let command = Self.command(for: event)
 
-        // IME 态（搜索框聚焦，接管中文输入）：仅 esc 由面板处理（降级回全量）；
-        // 其余键交给搜索框（含输入法组合与字段内导航）。
+        // 输入法组合期间必须把全部按键交给 NSTextInputClient（候选词/取消组合等）。
+        // 非组合期间仍优先执行面板导航键；普通文本交给隐藏搜索框。
         if model.imeInputActive {
-            if command == .escape {
-                if !model.handle(.escape) { hide() }
-                return nil
+            if isComposingText { return event }
+            if let command {
+                let consumed = model.handle(command)
+                if command == .escape, !consumed { hide(); return nil }
+                return consumed ? nil : event
             }
             return event
         }
@@ -196,6 +199,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func activateIMEInput() {
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+    }
+
+    private var isComposingText: Bool {
+        (panel.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
     }
 
     private func removeMonitors() {
