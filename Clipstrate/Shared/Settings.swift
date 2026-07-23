@@ -12,7 +12,6 @@ enum SettingsKey {
     // interaction
     static let pressAction = "interaction.pressAction"
     static let returnAction = "interaction.returnAction"
-    static let autoClose = "interaction.autoClose"
     static let plainTextDefault = "interaction.plainTextDefault"
     // display
     static let panelStyle = "display.panelStyle"
@@ -75,7 +74,6 @@ enum Settings {
             SettingsKey.digitModifier: DigitModifier.cmd.rawValue,
             SettingsKey.pressAction: ClickAction.paste.rawValue,
             SettingsKey.returnAction: ClickAction.paste.rawValue,
-            SettingsKey.autoClose: true,
             SettingsKey.plainTextDefault: false,
             SettingsKey.panelStyle: PanelStyle.glass.rawValue,
             SettingsKey.diskCapMB: 512,
@@ -105,7 +103,6 @@ enum Settings {
     }
 
     static var launchAtLogin: Bool { store.bool(forKey: SettingsKey.launchAtLogin) }
-    static var autoClose: Bool { store.bool(forKey: SettingsKey.autoClose) }
     static var plainTextDefault: Bool { store.bool(forKey: SettingsKey.plainTextDefault) }
     static var diskCapMB: Int { store.integer(forKey: SettingsKey.diskCapMB) }
 

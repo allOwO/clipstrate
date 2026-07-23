@@ -75,7 +75,6 @@ enum SettingsCatalog {
         SettingsKey.digitModifier,
         SettingsKey.pressAction,
         SettingsKey.returnAction,
-        SettingsKey.autoClose,
         SettingsKey.plainTextDefault,
         SettingsKey.panelStyle,
         SettingsKey.diskCapMB,

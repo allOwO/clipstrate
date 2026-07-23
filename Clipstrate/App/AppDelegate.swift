@@ -52,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     plainText: plainText || Settings.plainTextDefault,
                     action: action
                 )
-                if result.didWritePasteboard, Settings.autoClose { panel?.hide() }
+                if result.didWritePasteboard { panel?.hide() }
                 switch result {
                 case .copiedNeedsManualPaste: ToastPresenter.shared.show("已复制，请 ⌘V 粘贴")
                 case .copied: ToastPresenter.shared.show("已复制 ✓")

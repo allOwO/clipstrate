@@ -11,7 +11,6 @@ final class SettingsTests: XCTestCase {
     func testBaselineDefaultsMatchSpecTable() {
         // 02 §5 默认值表
         XCTAssertTrue(Settings.launchAtLogin)
-        XCTAssertTrue(Settings.autoClose)
         XCTAssertFalse(Settings.plainTextDefault)
         XCTAssertEqual(Settings.diskCapMB, 512)
         XCTAssertEqual(Settings.retention, .month)

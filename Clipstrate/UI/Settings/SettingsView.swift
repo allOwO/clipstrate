@@ -8,7 +8,6 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.digitModifier) private var digitModifierRaw = DigitModifier.cmd.rawValue
     @AppStorage(SettingsKey.pressAction) private var pressActionRaw = ClickAction.paste.rawValue
     @AppStorage(SettingsKey.returnAction) private var returnActionRaw = ClickAction.paste.rawValue
-    @AppStorage(SettingsKey.autoClose) private var autoClose = true
     @AppStorage(SettingsKey.plainTextDefault) private var plainTextDefault = false
     @AppStorage(SettingsKey.panelStyle) private var panelStyleRaw = PanelStyle.glass.rawValue
     @AppStorage(SettingsKey.diskCapMB) private var diskCapMB = 512
@@ -65,7 +64,6 @@ struct SettingsView: View {
         .onChange(of: digitModifierRaw) { _, _ in changed(SettingsKey.digitModifier) }
         .onChange(of: pressActionRaw) { _, _ in changed(SettingsKey.pressAction) }
         .onChange(of: returnActionRaw) { _, _ in changed(SettingsKey.returnAction) }
-        .onChange(of: autoClose) { _, _ in changed(SettingsKey.autoClose) }
         .onChange(of: plainTextDefault) { _, _ in changed(SettingsKey.plainTextDefault) }
         .onChange(of: panelStyleRaw) { _, _ in changed(SettingsKey.panelStyle) }
         .onChange(of: diskCapMB) { _, _ in changed(SettingsKey.diskCapMB) }
@@ -225,10 +223,6 @@ struct SettingsView: View {
                 SettingsDivider()
                 SettingsRow("双击 / 回车") {
                     actionPicker(selection: returnActionBinding)
-                }
-                SettingsDivider()
-                SettingsRow("操作完成后自动关闭窗口") {
-                    Toggle("", isOn: $autoClose).labelsHidden()
                 }
                 SettingsDivider()
                 SettingsRow("粘贴为纯文本（全局默认）") {

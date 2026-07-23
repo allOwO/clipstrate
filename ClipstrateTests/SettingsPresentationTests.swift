@@ -45,12 +45,13 @@ final class SettingsPresentationTests: XCTestCase {
     }
 
     func testSettingsCatalogCoversEveryWindowUserDefaultsKey() {
-        XCTAssertEqual(SettingsCatalog.windowKeys.count, 14)
+        XCTAssertEqual(SettingsCatalog.windowKeys.count, 13)
         XCTAssertEqual(Set(SettingsCatalog.windowKeys).count, SettingsCatalog.windowKeys.count)
         XCTAssertTrue(SettingsCatalog.windowKeys.contains(SettingsKey.launchAtLogin))
         XCTAssertTrue(SettingsCatalog.windowKeys.contains(SettingsKey.retention))
         XCTAssertTrue(SettingsCatalog.windowKeys.contains(SettingsKey.backupLastUploadAt))
         XCTAssertFalse(SettingsCatalog.windowKeys.contains(SettingsKey.onboardingDone))
+        XCTAssertFalse(SettingsCatalog.windowKeys.contains("interaction.autoClose"))
     }
 
     func testLoginItemStateReflectsRegistrationAndApproval() {
