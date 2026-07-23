@@ -1,5 +1,10 @@
 import Foundation
 
+struct BlobStoreLocations: Sendable {
+    let blobs: URL
+    let thumbs: URL
+}
+
 /// blob / thumb 落盘与删除（01 §2）。内容寻址：文件名通常 = `content_hash`。
 /// DB 只存相对文件名（`blob_path` 相对 `blobs/`、`thumb_path` 相对 `thumbs/`）。
 ///
@@ -15,6 +20,10 @@ final class BlobStore: Sendable {
         let fm = FileManager.default
         try fm.createDirectory(at: blobsDir, withIntermediateDirectories: true)
         try fm.createDirectory(at: thumbsDir, withIntermediateDirectories: true)
+    }
+
+    var locations: BlobStoreLocations {
+        BlobStoreLocations(blobs: blobsDir, thumbs: thumbsDir)
     }
 
     static func makeDefault() throws -> BlobStore {

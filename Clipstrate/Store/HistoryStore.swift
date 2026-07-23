@@ -1,6 +1,11 @@
 import Foundation
 import GRDB
 
+struct HistoryMergeResult: Equatable, Sendable {
+    let insertedCount: Int
+    let duplicateCount: Int
+}
+
 /// 历史库唯一入口（02 §7）。包装 GRDB `DatabasePool`（WAL，内部读写并发）；
 /// 对外全 async，写串行、读并行。主线程禁止直接调用其底层——一律 `await`。
 ///
@@ -242,6 +247,74 @@ final class HistoryStore: Sendable {
     /// 清空（工具 / 测试用）。
     func deleteAll() async throws {
         _ = try await dbPool.write { db in try ClipItem.deleteAll(db) }
+    }
+
+    // MARK: - 备份
+
+    /// 生成 WAL 安全、紧凑的 SQLite 快照。`VACUUM INTO` 不在事务内执行，
+    /// 并放到后台任务，避免阻塞 UI actor。
+    func createSnapshot(at destination: URL) async throws {
+        try await Task.detached(priority: .utility) { [dbPool] in
+            let fileManager = FileManager.default
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
+            }
+            try dbPool.writeWithoutTransaction { db in
+                try db.execute(
+                    sql: "VACUUM INTO ?",
+                    arguments: [destination.path]
+                )
+            }
+        }.value
+    }
+
+    /// 合并另一份 Clipstrate 快照。按 `content_hash` 去重，保留本地已有记录，
+    /// 新记录沿用原时间戳与置顶状态，并由现有触发器同步 FTS。
+    func mergeSnapshot(at source: URL) async throws -> HistoryMergeResult {
+        let importedItems = try await Task.detached(priority: .utility) {
+            let sourceQueue = try DatabaseQueue(path: source.path)
+            return try sourceQueue.read { db in
+                try ClipItem.fetchAll(db)
+            }
+        }.value
+
+        guard importedItems.allSatisfy(Self.hasSafeAssetPaths) else {
+            throw BackupError.invalidArchive
+        }
+
+        return try await dbPool.write { db in
+            var insertedCount = 0
+            var duplicateCount = 0
+            for var item in importedItems {
+                let exists = try ClipItem
+                    .filter(Column("content_hash") == item.contentHash)
+                    .fetchCount(db) > 0
+                if exists {
+                    duplicateCount += 1
+                    continue
+                }
+                item.id = nil
+                try item.insert(db)
+                insertedCount += 1
+            }
+            return HistoryMergeResult(
+                insertedCount: insertedCount,
+                duplicateCount: duplicateCount
+            )
+        }
+    }
+
+    private static func hasSafeAssetPaths(_ item: ClipItem) -> Bool {
+        [item.blobPath, item.thumbPath]
+            .compactMap { $0 }
+            .allSatisfy { path in
+                !path.isEmpty
+                    && path != "."
+                    && path != ".."
+                    && URL(fileURLWithPath: path).lastPathComponent == path
+                    && !path.contains("/")
+                    && !path.contains("\\")
+            }
     }
 
     // MARK: - 工具

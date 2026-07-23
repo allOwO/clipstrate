@@ -66,6 +66,24 @@ actor IgnoreListStore {
         return try readDocument().applications.contains { $0.bundleIdentifier == identifier }
     }
 
+    func exportData() throws -> Data {
+        try encoder.encode(readDocument())
+    }
+
+    /// 备份恢复语义为覆盖。先完整解码和校验版本，再原子写入，避免坏文件
+    /// 清空现有忽略名单。
+    func replace(with data: Data) throws {
+        var document = try decoder.decode(Document.self, from: data)
+        guard document.version == Document.currentVersion else {
+            throw StoreError.unsupportedVersion(document.version)
+        }
+        document.applications = Dictionary(
+            document.applications.map { ($0.bundleIdentifier, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        ).values.sorted(by: Self.sortApplications)
+        try write(document)
+    }
+
     /// 同 bundle id 去重；再次添加会刷新显示名。
     @discardableResult
     func add(_ application: IgnoredApplication) throws -> Bool {

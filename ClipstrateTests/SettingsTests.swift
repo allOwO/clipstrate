@@ -45,4 +45,46 @@ final class SettingsTests: XCTestCase {
             )
         )
     }
+
+    func testBackupRestoreRejectsUnknownKeysAndInvalidValues() throws {
+        let defaults = UserDefaults.standard
+        let unknownKey = "backup.test.unknown"
+        let originalDiskCap = defaults.object(forKey: SettingsKey.diskCapMB)
+        let originalPanelItemCount = defaults.object(forKey: SettingsKey.panelItemCount)
+        let originalModifier = defaults.object(forKey: SettingsKey.digitModifier)
+        defer {
+            defaults.removeObject(forKey: unknownKey)
+            if let originalDiskCap {
+                defaults.set(originalDiskCap, forKey: SettingsKey.diskCapMB)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.diskCapMB)
+            }
+            if let originalPanelItemCount {
+                defaults.set(originalPanelItemCount, forKey: SettingsKey.panelItemCount)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.panelItemCount)
+            }
+            if let originalModifier {
+                defaults.set(originalModifier, forKey: SettingsKey.digitModifier)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.digitModifier)
+            }
+        }
+
+        try Settings.restore(
+            from: SettingsBackupDocument(
+                booleans: [unknownKey: true],
+                integers: [
+                    SettingsKey.diskCapMB: 999,
+                    SettingsKey.panelItemCount: 999,
+                ],
+                strings: [SettingsKey.digitModifier: "invalid"]
+            )
+        )
+
+        XCTAssertNil(defaults.object(forKey: unknownKey))
+        XCTAssertNotEqual(Settings.diskCapMB, 999)
+        XCTAssertNotEqual(Settings.panelItemCount, 999)
+        XCTAssertNotEqual(defaults.string(forKey: SettingsKey.digitModifier), "invalid")
+    }
 }

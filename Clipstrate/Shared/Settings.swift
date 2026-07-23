@@ -62,6 +62,19 @@ enum PanelStyle: String, CaseIterable, Sendable {
     case glass, compat
 }
 
+struct SettingsBackupDocument: Codable, Equatable, Sendable {
+    static let currentVersion = 1
+
+    var formatVersion = currentVersion
+    var booleans: [String: Bool]
+    var integers: [String: Int]
+    var strings: [String: String]
+
+    var requestedLaunchAtLogin: Bool? {
+        booleans[SettingsKey.launchAtLogin]
+    }
+}
+
 /// 设置读写的唯一入口（Shared）。基于 `UserDefaults.standard`（线程安全），
 /// 非 actor 隔离，DB/后台任务亦可直接读。写入以 UI（`@AppStorage`）为主，
 /// 少数早期由非 UI 代码写的键在此提供 setter。
@@ -148,5 +161,97 @@ enum Settings {
     }
     static func setBackupLastUploadAt(_ value: Double) {
         store.set(value, forKey: SettingsKey.backupLastUploadAt)
+    }
+
+    // MARK: 备份
+
+    static func makeBackupDocument() -> SettingsBackupDocument {
+        let allValues = store.dictionaryRepresentation()
+        let hotkeys = allValues.reduce(into: [String: String]()) { result, pair in
+            guard pair.key.hasPrefix("KeyboardShortcuts_"),
+                  let value = pair.value as? String else { return }
+            result[pair.key] = value
+        }
+        var strings: [String: String] = [
+            SettingsKey.digitModifier: digitModifier.rawValue,
+            SettingsKey.pressAction: pressAction.rawValue,
+            SettingsKey.returnAction: returnAction.rawValue,
+            SettingsKey.panelStyle: panelStyle.rawValue,
+            SettingsKey.retention: retention.rawValue,
+        ]
+        strings.merge(hotkeys) { _, latest in latest }
+
+        return SettingsBackupDocument(
+            booleans: [
+                SettingsKey.launchAtLogin: launchAtLogin,
+                SettingsKey.plainTextDefault: plainTextDefault,
+                SettingsKey.backupAutoICloud: backupAutoICloud,
+                SettingsKey.backupIncludeSettings: backupIncludeSettings,
+                SettingsKey.backupIncludeIgnoreList: backupIncludeIgnoreList,
+                SettingsKey.backupIncludeHistory: backupIncludeHistory,
+            ],
+            integers: [
+                SettingsKey.diskCapMB: diskCapMB,
+                SettingsKey.panelItemCount: panelItemCount,
+            ],
+            strings: strings
+        )
+    }
+
+    static func restore(from document: SettingsBackupDocument) throws {
+        guard document.formatVersion == SettingsBackupDocument.currentVersion else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        for (key, value) in document.booleans where backupBooleanKeys.contains(key) {
+            store.set(value, forKey: key)
+        }
+        for (key, value) in document.integers where backupIntegerKeys.contains(key) {
+            guard key != SettingsKey.diskCapMB || [256, 512, 1_024, 2_048].contains(value) else {
+                continue
+            }
+            guard key != SettingsKey.panelItemCount || [20, 30, 50, 80, 100].contains(value) else {
+                continue
+            }
+            store.set(value, forKey: key)
+        }
+        for (key, value) in document.strings where isAllowedBackupString(key: key, value: value) {
+            store.set(value, forKey: key)
+        }
+    }
+
+    private static let backupBooleanKeys: Set<String> = [
+        SettingsKey.launchAtLogin,
+        SettingsKey.plainTextDefault,
+        SettingsKey.backupAutoICloud,
+        SettingsKey.backupIncludeSettings,
+        SettingsKey.backupIncludeIgnoreList,
+        SettingsKey.backupIncludeHistory,
+    ]
+
+    private static let backupIntegerKeys: Set<String> = [
+        SettingsKey.diskCapMB,
+        SettingsKey.panelItemCount,
+    ]
+
+    private static let backupHotkeyKeys: Set<String> = [
+        "KeyboardShortcuts_hotkey.summon",
+        "KeyboardShortcuts_hotkey.chop",
+        "KeyboardShortcuts_hotkey.stackToggle",
+        "KeyboardShortcuts_hotkey.stackPaste",
+    ]
+
+    private static func isAllowedBackupString(key: String, value: String) -> Bool {
+        switch key {
+        case SettingsKey.digitModifier:
+            DigitModifier(rawValue: value) != nil
+        case SettingsKey.pressAction, SettingsKey.returnAction:
+            ClickAction(rawValue: value) != nil
+        case SettingsKey.panelStyle:
+            PanelStyle(rawValue: value) != nil
+        case SettingsKey.retention:
+            Retention(rawValue: value) != nil
+        default:
+            backupHotkeyKeys.contains(key)
+        }
     }
 }

@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var blobStore: BlobStore?
     private var clipboardMonitor: ClipboardMonitor?
     private var retentionJanitor: RetentionJanitor?
+    private var backupService: BackupService?
     private var janitorTask: Task<Void, Never>?
     private var onboardingController: OnboardingController?
     private let hotkeyCenter = HotkeyCenter()
@@ -137,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             blobStore = blobs
             clipboardMonitor = monitor
             retentionJanitor = janitor
+            backupService = BackupService(
+                historyStore: store,
+                blobStore: blobs,
+                ignoreListStore: ignoreListStore
+            )
             Task { await monitor.start() }
             startJanitor(janitor)
         } catch {
@@ -185,8 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backupState: .unavailable,
                 backupNow: { ToastPresenter.shared.show("云备份即将推出") },
                 restoreFromCloud: { ToastPresenter.shared.show("云备份即将推出") },
-                importBackup: { ToastPresenter.shared.show("导入即将推出") },
-                exportBackup: { ToastPresenter.shared.show("导出即将推出") }
+                importBackup: { [weak self] in self?.chooseBackupToImport() },
+                exportBackup: { [weak self] in self?.chooseBackupDestination() }
             )
             settingsWindowController = SettingsWindowController(
                 actions: actions,
@@ -195,6 +201,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         settingsWindowController?.show()
+    }
+
+    private func chooseBackupDestination() {
+        guard let backupService else {
+            ToastPresenter.shared.show("历史库不可用，无法导出")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.title = "导出 Clipstrate 备份"
+        panel.nameFieldStringValue = Self.backupFilename()
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        let selection = BackupSelection.currentSettings
+        Task { @MainActor in
+            do {
+                try await backupService.exportArchive(
+                    to: destination,
+                    selection: selection
+                )
+                ToastPresenter.shared.show("备份已导出 ✓")
+            } catch {
+                ToastPresenter.shared.show(error.localizedDescription)
+                Log.store.error("导出备份失败：\(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    private func chooseBackupToImport() {
+        guard let backupService else {
+            ToastPresenter.shared.show("历史库不可用，无法导入")
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.title = "导入 Clipstrate 备份"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+        guard source.pathExtension.lowercased() == "clipstrate" else {
+            ToastPresenter.shared.show("请选择 .clipstrate 备份文件")
+            return
+        }
+
+        let confirmation = NSAlert()
+        confirmation.messageText = "导入此备份？"
+        confirmation.informativeText = "设置和忽略名单将覆盖当前值；剪贴板历史会按内容去重合并。"
+        confirmation.alertStyle = .warning
+        confirmation.addButton(withTitle: "导入")
+        confirmation.addButton(withTitle: "取消")
+        guard confirmation.runModal() == .alertFirstButtonReturn else { return }
+
+        Task { @MainActor [weak self] in
+            do {
+                let result = try await backupService.importArchive(from: source)
+                if let enabled = result.requestedLaunchAtLogin, let self {
+                    try self.loginItemManager.setEnabled(enabled)
+                    Settings.setLaunchAtLogin(self.loginItemManager.state.isSelected)
+                }
+                let inserted = result.history.insertedCount
+                let duplicates = result.history.duplicateCount
+                ToastPresenter.shared.show("导入完成：新增 \(inserted) 条，跳过 \(duplicates) 条重复")
+            } catch {
+                ToastPresenter.shared.show(error.localizedDescription)
+                Log.store.error("导入备份失败：\(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    private static func backupFilename(now: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd"
+        return "Clipstrate-backup-\(formatter.string(from: now)).clipstrate"
     }
 
     private func openAbout() {
