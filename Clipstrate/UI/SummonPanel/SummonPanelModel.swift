@@ -11,6 +11,14 @@ final class SummonPanelModel: ObservableObject {
     @Published private(set) var isPanelPresented = false
     @Published private(set) var overlayView: AnyView?
 
+    // 面板内搜索（type-to-search，01 §3.6）
+    @Published private(set) var searchQuery = ""
+    @Published private(set) var matchCount = 0
+    /// `/` 或点击搜索胶囊后升级为 key window 接管输入法（中文）——绑定搜索框焦点。
+    @Published var imeInputActive = false
+
+    var isSearching: Bool { imeInputActive || !searchQuery.isEmpty }
+
     var onLayoutChange: (() -> Void)?
     let blobStore: BlobStore?
 
@@ -18,6 +26,7 @@ final class SummonPanelModel: ObservableObject {
     private var overlayBuilder: ChopOverlayBuilder?
     private var pasteHandler: SummonPasteHandler?
     private var refreshTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
 
     init(
         historyStore: HistoryStore?,
@@ -42,12 +51,22 @@ final class SummonPanelModel: ObservableObject {
         focus = .card
         isPanelPresented = true
         presentationEpoch &+= 1
+        resetSearchState()
         refresh()
     }
 
     func endPresentation() {
         isPanelPresented = false
         dismissOverlay()
+        resetSearchState()
+    }
+
+    private func resetSearchState() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchQuery = ""
+        imeInputActive = false
+        matchCount = 0
     }
 
     func setOverlayBuilder(_ builder: @escaping ChopOverlayBuilder) {
@@ -75,7 +94,18 @@ final class SummonPanelModel: ObservableObject {
                 focus = .card
                 return true
             }
+            // 两段式 esc（01 §3.6）：先清空搜索回全量，再关面板。
+            if isSearching {
+                exitSearch()
+                return true
+            }
             return false
+        }
+
+        // 搜索态下裸数字并入查询（即使当前无匹配也要能继续输入，须在空 items 判断之前）。
+        if case .digit(let oneBased) = command, !searchQuery.isEmpty {
+            appendSearchCharacter(Character("\(oneBased)"))
+            return true
         }
 
         guard !items.isEmpty else { return true }
@@ -143,9 +173,86 @@ final class SummonPanelModel: ObservableObject {
         onLayoutChange?()
     }
 
+    // MARK: - 面板内搜索（01 §3.6）
+
+    /// ASCII 快速搜索：keyDown 直接并入查询字符。
+    func appendSearchCharacter(_ character: Character) {
+        searchQuery.append(character)
+        scheduleFilter()
+        onLayoutChange?()
+    }
+
+    /// TextField 绑定（IME 态：中文经 `/` 升级后由搜索框驱动查询）。
+    func setSearchQuery(_ text: String) {
+        guard text != searchQuery else { return }
+        searchQuery = text
+        scheduleFilter()
+        onLayoutChange?()
+    }
+
+    /// `⌫`：搜索态下删除一个字符（空查询也消费，不透传）。返回是否已消费。
+    @discardableResult
+    func deleteSearchCharacter() -> Bool {
+        guard isSearching else { return false }
+        if !searchQuery.isEmpty {
+            searchQuery.removeLast()
+            scheduleFilter()
+            onLayoutChange?()
+        }
+        return true
+    }
+
+    /// `/` 或点击搜索胶囊：升级接管输入法（中文）。
+    func beginIMEInput() {
+        guard !imeInputActive else { return }
+        imeInputActive = true
+        onLayoutChange?()
+    }
+
+    /// 退出搜索、回全量（第一次 esc）。
+    func exitSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchQuery = ""
+        imeInputActive = false
+        matchCount = 0
+        selectedIndex = 0
+        focus = .card
+        refresh()
+        onLayoutChange?()
+    }
+
+    private func scheduleFilter() {
+        searchTask?.cancel()
+        let query = searchQuery
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+            await self?.runFilter(query)
+        }
+    }
+
+    private func runFilter(_ query: String) async {
+        guard let historyStore else { return }
+        let results: [ClipItem]
+        if query.isEmpty {
+            results = (try? await historyStore.page(limit: SummonPanelLayout.maximumItemCount)) ?? []
+        } else {
+            results = (try? await historyStore.search(query, limit: SummonPanelLayout.maximumItemCount)) ?? []
+        }
+        guard query == searchQuery else { return }   // 期间查询词已变，丢弃过期结果
+        items = results
+        matchCount = results.count
+        selectedIndex = min(selectedIndex, max(0, results.count - 1))
+        focus = .card
+        onLayoutChange?()
+    }
+
     func tearDown() {
         refreshTask?.cancel()
         refreshTask = nil
+        searchTask?.cancel()
+        searchTask = nil
         onLayoutChange = nil
     }
 

@@ -5,6 +5,7 @@ import SwiftUI
 /// 卡片视觉、两层焦点与三类内容渲染集中在此；搜索态由 T1.9 继续扩展。
 struct SummonPanelView: View {
     @ObservedObject var model: SummonPanelModel
+    @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
         ZStack {
@@ -24,6 +25,7 @@ struct SummonPanelView: View {
 
     private var cardLayer: some View {
         VStack(spacing: DS.Metrics.hintPillGap) {
+            if model.isSearching { searchCapsule }
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
                     if model.items.isEmpty {
@@ -78,6 +80,35 @@ struct SummonPanelView: View {
             .padding(.vertical, 12)
             .glassSurface(cornerRadius: 999)
             .frame(maxWidth: .infinity, minHeight: DS.Metrics.cardSelected.height)
+    }
+
+    /// 搜索胶囊（01 §3.6）：🔍 + 查询词 + 匹配数。ASCII 态由 keyDown 直接并入（字段禁用、
+    /// 只显示）；点击或 `/` 升级为 IME 态（字段可编辑并聚焦，接管中文输入）。
+    private var searchCapsule: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            TextField("搜索", text: Binding(
+                get: { model.searchQuery },
+                set: { model.setSearchQuery($0) }
+            ))
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .frame(minWidth: 60)
+            .fixedSize()
+            .disabled(!model.imeInputActive)
+            .focused($searchFieldFocused)
+            Text(model.items.isEmpty ? "无匹配" : "\(model.matchCount)")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .glassSurface(cornerRadius: 999)
+        .contentShape(Capsule())
+        .onTapGesture { model.beginIMEInput() }
+        .onChange(of: model.imeInputActive) { _, active in searchFieldFocused = active }
     }
 }
 

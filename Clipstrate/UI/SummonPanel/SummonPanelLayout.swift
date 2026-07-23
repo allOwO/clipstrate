@@ -9,6 +9,7 @@ enum SummonPanelLayout {
     static let minimumPanelWidth: CGFloat = 720
     static let normalPanelHeight: CGFloat = 292
     static let overlayPanelHeight: CGFloat = 460
+    static let searchCapsuleHeight: CGFloat = 46
 
     static func cardStripWidth(itemCount: Int, selectedIndex: Int = 0) -> CGFloat {
         let count = min(max(0, itemCount), maximumItemCount)
@@ -24,7 +25,8 @@ enum SummonPanelLayout {
         itemCount: Int,
         selectedIndex: Int = 0,
         availableWidth: CGFloat,
-        overlayPresented: Bool = false
+        overlayPresented: Bool = false,
+        searching: Bool = false
     ) -> CGSize {
         let usableWidth = max(DS.Metrics.cardSelected.width, availableWidth - screenInset * 2)
         let cardsWidth = cardStripWidth(itemCount: itemCount, selectedIndex: selectedIndex)
@@ -33,9 +35,11 @@ enum SummonPanelLayout {
         let desiredWidth = overlayPresented
             ? max(minimumPanelWidth, max(cardsWidth, overlayWidth))
             : max(minimumPanelWidth, cardsWidth)
+        let baseHeight = overlayPresented ? overlayPanelHeight : normalPanelHeight
+        let height = baseHeight + (searching && !overlayPresented ? searchCapsuleHeight : 0)
         return CGSize(
             width: min(desiredWidth, usableWidth),
-            height: overlayPresented ? overlayPanelHeight : normalPanelHeight
+            height: height
         )
     }
 }

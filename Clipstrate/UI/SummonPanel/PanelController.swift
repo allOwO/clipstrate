@@ -118,7 +118,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             itemCount: model.items.count,
             selectedIndex: model.selectedIndex,
             availableWidth: visibleFrame.width,
-            overlayPresented: model.overlayView != nil
+            overlayPresented: model.overlayView != nil,
+            searching: model.isSearching
         )
         let frame = PanelPlacement.frame(
             panelSize: panelSize,
@@ -134,17 +135,53 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func installMonitors() {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            guard let command = Self.command(for: event) else { return event }
-            let consumed = self.model.handle(command)
-            if command == .escape, !consumed {
-                self.hide()
-                return nil
-            }
-            return consumed ? nil : event
+            return self.handleKeyDown(event)
         }
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.hide()
         }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        let command = Self.command(for: event)
+
+        // IME 态（搜索框聚焦，接管中文输入）：仅 esc 由面板处理（降级回全量）；
+        // 其余键交给搜索框（含输入法组合与字段内导航）。
+        if model.imeInputActive {
+            if command == .escape {
+                if !model.handle(.escape) { hide() }
+                return nil
+            }
+            return event
+        }
+
+        if let command {
+            let consumed = model.handle(command)
+            if command == .escape, !consumed { hide(); return nil }
+            return consumed ? nil : event
+        }
+
+        return handleSearchKey(event)
+    }
+
+    /// 非 IME 态的搜索输入：`⌫` 删字符、`/` 升级接管输入法、可打印 ASCII 并入查询（01 §3.6）。
+    private func handleSearchKey(_ event: NSEvent) -> NSEvent? {
+        if event.keyCode == 51 {                     // delete / backspace
+            return model.deleteSearchCharacter() ? nil : event
+        }
+        if event.charactersIgnoringModifiers == "/" {
+            NSApp.activate(ignoringOtherApps: true)
+            model.beginIMEInput()
+            return nil
+        }
+        guard let characters = event.characters, characters.count == 1,
+              let character = characters.first, character.isASCII,
+              character.isLetter || character.isNumber || character.isPunctuation
+                || character.isSymbol || character == " " else {
+            return event
+        }
+        model.appendSearchCharacter(character)
+        return nil
     }
 
     private func removeMonitors() {
