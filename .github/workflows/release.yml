@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "仅验证打包，不发布；格式如 0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package macOS arm64
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve version
+        id: version
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            release_tag="$GITHUB_REF_NAME"
+          else
+            release_tag="v${MANUAL_VERSION}"
+          fi
+          if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag 必须使用 v主版本.次版本.修订号，例如 v0.1.0" >&2
+            exit 1
+          fi
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "version=${release_tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcodegen --version
+
+      - name: Build and package
+        run: |
+          ./scripts/package-release.sh \
+            "${{ steps.version.outputs.tag }}" \
+            "$GITHUB_WORKSPACE/dist" \
+            "$GITHUB_RUN_NUMBER"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Clipstrate-${{ steps.version.outputs.version }}-macOS-arm64
+          path: dist/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            dist/*.zip \
+            dist/*.dmg \
+            dist/*.sha256 \
+            --verify-tag \
+            --generate-notes \
+            --title "Clipstrate ${RELEASE_TAG#v}"
+
+      - name: Write summary
+        run: |
+          echo "## Clipstrate ${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 架构：arm64" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 签名：ad-hoc（未公证）" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 产物：ZIP、DMG、SHA-256" >> "$GITHUB_STEP_SUMMARY"

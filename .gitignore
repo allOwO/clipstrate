@@ -5,6 +5,7 @@ Clipstrate/Info.plist
 
 # Xcode / SwiftPM 构建产物
 build/
+dist/
 DerivedData/
 .build/
 .swiftpm/
