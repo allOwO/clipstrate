@@ -32,6 +32,8 @@ final class SummonPanelModel: ObservableObject {
     private var pasteHandler: SummonPasteHandler?
     private var refreshTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    /// 悬停触发的选中变更只放大、不滚动（见 hoverSelect / shouldAutoScrollToSelection）。
+    private var suppressNextAutoScroll = false
 
     init(
         historyStore: HistoryStore?,
@@ -148,6 +150,22 @@ final class SummonPanelModel: ObservableObject {
         selectedIndex = index
         focus = .card
         pasteSelected(plainText: false, source: .return)
+    }
+
+    /// 鼠标悬停即聚焦：把选中切到光标所在卡使其放大，与键盘左右选择齐平。
+    /// 悬停触发的变更不自动滚动（滚动只应由键盘导航触发，否则鼠标会追着卡跑）。
+    func hoverSelect(at index: Int) {
+        guard isPanelPresented, overlayView == nil,
+              items.indices.contains(index), index != selectedIndex else { return }
+        suppressNextAutoScroll = true
+        selectedIndex = index
+        focus = .card
+    }
+
+    /// 供卡片条 `scrollTo` 判定：消费一次「悬停抑制」标记；hover 触发的选中变更返回 false（不滚动）。
+    func shouldAutoScrollToSelection() -> Bool {
+        if suppressNextAutoScroll { suppressNextAutoScroll = false; return false }
+        return true
     }
 
     func activateAction(_ index: Int) {

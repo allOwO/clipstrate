@@ -59,7 +59,8 @@ struct SummonPanelView: View {
                                     isPanelPresented: model.isPanelPresented,
                                     onActivate: { model.activateCard(at: index) },
                                     onPlainText: { model.activateAction(0) },
-                                    onChop: { model.activateAction(1) }
+                                    onChop: { model.activateAction(1) },
+                                    onHover: { model.hoverSelect(at: index) }
                                 )
                                 // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                 // 不改变行高、不引起纵向重排或向下过冲。
@@ -74,9 +75,12 @@ struct SummonPanelView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
+                // 不裁剪滚动溢出：每张卡的玻璃投影各自完整羽化，不被 ScrollView 底边切成一条横线。
+                .scrollClipDisabled()
                 .onChange(of: model.selectedIndex) { _, index in
-                    guard model.items.indices.contains(index) else { return }
-                    // 瞬时定位，不做滚动动画（与「无生长动画」一致）。
+                    // 悬停触发的选中只放大不滚动；键盘导航才滚动定位（瞬时，无滚动动画）。
+                    guard model.shouldAutoScrollToSelection(),
+                          model.items.indices.contains(index) else { return }
                     proxy.scrollTo(cardID(model.items[index]), anchor: .center)
                 }
             }
@@ -210,9 +214,9 @@ private struct SummonCardView: View {
     let onActivate: () -> Void
     let onPlainText: () -> Void
     let onChop: () -> Void
+    let onHover: () -> Void
 
     @State private var isEntered = false
-    @State private var isHovered = false
 
     private var size: CGSize {
         isSelected ? DS.Metrics.cardSelected : DS.Metrics.cardUnselected
@@ -251,13 +255,10 @@ private struct SummonCardView: View {
         // 选中不做生长动画：尺寸瞬时切换（回到最初方案），彻底消除生长过程中的下探。
         .opacity(isEntered ? 1 : 0)
         .offset(y: entranceOffset)
-        .offset(y: isHovered ? -4 : 0)
         .scaleEffect(entranceScale, anchor: .bottom)
         .contentShape(RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous))
         .onTapGesture(perform: onActivate)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.16)) { isHovered = hovering }
-        }
+        .onHover { hovering in if hovering { onHover() } }
         .onAppear { updateEntrance(animate: presentationEpoch > 0 && isPanelPresented) }
         .onChange(of: isPanelPresented) { _, presented in
             if !presented { animateExit() }
@@ -267,7 +268,18 @@ private struct SummonCardView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
+            // 序号左置、不裁切。1–9 用强调色（对应 ⌘1–9 快捷键，便于一眼定位）；其余淡显。
+            Text("\(index + 1)")
+                .font(DS.Typography.badge)
+                .foregroundStyle(index < 9 ? DS.Colors.accent : Color.secondary)
+                .frame(minWidth: 16, minHeight: 16)
+                .padding(.horizontal, 2)
+                .background(
+                    (index < 9 ? DS.Colors.accent.opacity(0.16) : Color.primary.opacity(0.08)),
+                    in: Capsule()
+                )
+
             Text(presentation.typeLabel)
                 .font(DS.Typography.cardTypeLabel)
                 .tracking(0.4)
@@ -278,16 +290,6 @@ private struct SummonCardView: View {
             if let sourceName = presentation.sourceName {
                 SourceAppBadge(bundleID: item.appBundleID, name: sourceName)
             }
-        }
-        .padding(.trailing, 20)
-        .overlay(alignment: .topTrailing) {
-            Text("\(index + 1)")
-                .font(DS.Typography.badge)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 16, minHeight: 16)
-                .padding(.horizontal, 2)
-                .background(.primary.opacity(0.08), in: Capsule())
-                .offset(x: 20)
         }
         .frame(height: 16)
         .padding(.bottom, 6)

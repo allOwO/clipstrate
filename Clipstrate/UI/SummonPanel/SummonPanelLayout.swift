@@ -6,6 +6,9 @@ enum SummonPanelLayout {
     static let maximumItemCount = 200
     /// 设置里可选的「面板显示条数」档位。
     static let itemCountOptions = [20, 50, 100, 200]
+    /// 面板窗口最多按这么多张卡计算宽度（带鱼屏也不铺满整屏）；更多条目在条内横向滚动，
+    /// LazyHStack 只实体化视口内的卡，实体化数量因此有上界（内存不随历史条数线性增长）。
+    static let maxVisibleCards = 20
     /// 搜索结果上限，与显示上限解耦：搜索本就扫全库，这里给更大的返回上限，
     /// 避免命中很多时把较旧的匹配截断（>此值才会截断，一般够用）。
     static let searchResultLimit = 300
@@ -35,7 +38,10 @@ enum SummonPanelLayout {
         searching: Bool = false
     ) -> CGSize {
         let usableWidth = max(DS.Metrics.cardSelected.width, availableWidth - screenInset * 2)
-        let cardsWidth = cardStripWidth(itemCount: itemCount, selectedIndex: selectedIndex)
+        // 窗口宽度最多按 maxVisibleCards 张卡计；更多条目滚动查看，窗口尺寸稳定不随条数增长。
+        let widthCount = min(itemCount, maxVisibleCards)
+        let cardsWidth = cardStripWidth(itemCount: widthCount,
+                                        selectedIndex: min(selectedIndex, max(0, widthCount - 1)))
             + shadowPadding * 2
         let overlayWidth = DS.Metrics.chopOverlayMaxWidth + shadowPadding * 2
         let desiredWidth = overlayPresented
