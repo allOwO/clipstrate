@@ -603,6 +603,11 @@ private final class SourceAppIconCache {
     private let cache = NSCache<NSString, NSImage>()
     private var misses = Set<String>()
 
+    private init() {
+        cache.countLimit = 64
+        cache.totalCostLimit = 8 * 1024 * 1024
+    }
+
     func icon(bundleID: String?) async -> NSImage? {
         guard let bundleID, !bundleID.isEmpty, !misses.contains(bundleID) else { return nil }
         if let cached = cache.object(forKey: bundleID as NSString) { return cached }
@@ -611,7 +616,7 @@ private final class SourceAppIconCache {
             return nil
         }
         let image = NSWorkspace.shared.icon(forFile: url.path)
-        cache.setObject(image, forKey: bundleID as NSString)
+        cache.setObject(image, forKey: bundleID as NSString, cost: 32 * 32 * 4)
         return image
     }
 }

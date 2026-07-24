@@ -18,17 +18,20 @@ final class PasteService {
     typealias PasteKeystroke = @MainActor () -> Void
 
     private let pasteboard: NSPasteboard
+    private let historyStore: HistoryStore?
     private let blobStore: BlobStore?
     private let isAXTrusted: TrustCheck
     private let postPasteKeystroke: PasteKeystroke
 
     init(
         pasteboard: NSPasteboard = .general,
+        historyStore: HistoryStore? = nil,
         blobStore: BlobStore?,
         isAXTrusted: @escaping TrustCheck = { AXPermission.isTrusted },
         postPasteKeystroke: @escaping PasteKeystroke = { PasteService.postCommandV() }
     ) {
         self.pasteboard = pasteboard
+        self.historyStore = historyStore
         self.blobStore = blobStore
         self.isAXTrusted = isAXTrusted
         self.postPasteKeystroke = postPasteKeystroke
@@ -76,7 +79,7 @@ final class PasteService {
     }
 
     private func writeText(_ item: ClipItem, plainText: Bool) async -> Bool {
-        guard let plain = item.plainText else { return false }
+        guard let plain = await fullPlainText(for: item) else { return false }
         var rich: (NSPasteboard.PasteboardType, Data)?
         if !plainText, item.isRich,
            let blobPath = item.blobPath,
@@ -112,6 +115,18 @@ final class PasteService {
         pasteboard.clearContents()
         guard pasteboard.writeObjects(urls as [NSURL]) else { return false }
         return pasteboard.setData(Data(), forType: .clipstrateSelfWrite)
+    }
+
+    /// 列表条目只带预览文本；粘贴需完整全文。绝大多数剪贴是短句：预览长度未顶到上限即为
+    /// 完整内容，直接用、不回源；仅当预览可能被截断（长度达上限）时才按 id 回库取全文。
+    private func fullPlainText(for item: ClipItem) async -> String? {
+        guard let preview = item.plainText else { return nil }
+        if preview.count < HistoryStore.previewTextLength { return preview }   // 短内容即完整
+        if let id = item.id, let historyStore,
+           let full = try? await historyStore.fullText(id: id) {
+            return full
+        }
+        return preview
     }
 
     private func readBlob(_ name: String) async throws -> Data {

@@ -82,6 +82,7 @@ final class PopoverController: NSObject, NSWindowDelegate {
         removeMonitors()
         isVisible = false
         panel.orderOut(nil)
+        model.releaseItems()          // 释放累积分页，关闭期间不常驻
     }
 
     /// App 终止时显式拆除（零泄露清单）。

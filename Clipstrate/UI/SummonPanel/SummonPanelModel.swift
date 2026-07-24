@@ -157,8 +157,33 @@ final class SummonPanelModel: ObservableObject {
     }
 
     func presentChopOverlay(for item: ClipItem) {
-        guard item.kind == .text, !(item.plainText ?? "").isEmpty, let overlayBuilder else { return }
+        guard item.kind == .text, !(item.plainText ?? "").isEmpty, overlayBuilder != nil else { return }
         imeInputActive = false
+        // 列表条目只带预览文本；分词需完整全文，按 id 补全后再构建 overlay（DB 读在后台）。
+        Task { [weak self] in
+            guard let self else { return }
+            let fullItem = await self.itemWithFullText(item)
+            self.buildChopOverlay(for: fullItem)
+        }
+    }
+
+    /// 用完整 `plain_text` 补全列表条目（列表只带预览）；取不到则原样返回。
+    /// 短内容（预览未顶到上限）即完整，直接返回、不回源。
+    private func itemWithFullText(_ item: ClipItem) async -> ClipItem {
+        if let preview = item.plainText, preview.count < HistoryStore.previewTextLength {
+            return item
+        }
+        guard let id = item.id, let historyStore,
+              let full = try? await historyStore.fullText(id: id) else {
+            return item
+        }
+        var copy = item
+        copy.plainText = full
+        return copy
+    }
+
+    private func buildChopOverlay(for item: ClipItem) {
+        guard let overlayBuilder, !(item.plainText ?? "").isEmpty else { return }
         // overlay 完成（复制/粘贴/返回按钮）→ 关闭整个面板；esc 由面板监听器走 dismissOverlay 回卡片层。
         overlayView = overlayBuilder(ChopOverlayRequest(item: item)) { [weak self] in
             Task { @MainActor [weak self] in self?.onRequestClose?() }

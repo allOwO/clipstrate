@@ -6,6 +6,15 @@ struct HistoryMergeResult: Equatable, Sendable {
     let duplicateCount: Int
 }
 
+/// 清理候选：只携带删除决策所需的列（id/容量/资源路径），
+/// 避免把可能达 MB 级的 `plain_text` 随全表载入内存（性能预算）。
+struct RetentionCandidate: FetchableRecord, Decodable, Sendable {
+    var id: Int64
+    var byteSize: Int
+    var blobPath: String?
+    var thumbPath: String?
+}
+
 /// 历史库唯一入口（02 §7）。包装 GRDB `DatabasePool`（WAL，内部读写并发）；
 /// 对外全 async，写串行、读并行。主线程禁止直接调用其底层——一律 `await`。
 ///
@@ -148,22 +157,40 @@ final class HistoryStore: Sendable {
 
     // MARK: - 读取
 
+    /// 列表/搜索只取预览长度的 `plain_text`（卡片仅显示数行）；完整全文由 `fullText(id:)`
+    /// 按需取。避免大段文本（每条可达 MB 级）随列表全量常驻（性能预算：常驻 <30MB）。
+    static let previewTextLength = 512
+
+    /// 列表查询的列投影：`plain_text` 用 `substr` 截到预览长度，其余列原样取。
+    /// `prefix` 供带 JOIN 的搜索消歧（如 `item`）。
+    private static func listColumns(prefix: String = "") -> String {
+        let p = prefix.isEmpty ? "" : prefix + "."
+        return """
+        \(p)id, \(p)kind, \(p)is_rich, substr(\(p)plain_text, 1, \(previewTextLength)) AS plain_text, \
+        \(p)label, \(p)rich_type, \(p)blob_path, \(p)thumb_path, \(p)file_urls, \(p)content_hash, \
+        \(p)app_bundle_id, \(p)app_name, \(p)byte_size, \(p)truncated, \(p)pinned, \(p)created_at, \(p)last_used_at
+        """
+    }
+
     /// keyset 分页（02 §4）：按 `pinned DESC, last_used_at DESC, id DESC`，
     /// 传上一页最后一条 `after` 取下一页。首页传 nil。
     func page(after cursor: ClipItem? = nil, limit: Int = 50) async throws -> [ClipItem] {
         let interval = Log.signposter.beginInterval("db.page")
         defer { Log.signposter.endInterval("db.page", interval) }
         return try await dbPool.read { db in
-            var request = ClipItem
-                .order(sql: "pinned DESC, last_used_at DESC, id DESC")
-                .limit(limit)
             if let cursor, let id = cursor.id {
-                request = request.filter(
-                    sql: "(pinned, last_used_at, id) < (?, ?, ?)",
-                    arguments: [cursor.pinned, cursor.lastUsedAt, id]
-                )
+                return try ClipItem.fetchAll(db, sql: """
+                    SELECT \(Self.listColumns()) FROM item
+                    WHERE (pinned, last_used_at, id) < (?, ?, ?)
+                    ORDER BY pinned DESC, last_used_at DESC, id DESC
+                    LIMIT ?
+                    """, arguments: [cursor.pinned, cursor.lastUsedAt, id, limit])
             }
-            return try request.fetchAll(db)
+            return try ClipItem.fetchAll(db, sql: """
+                SELECT \(Self.listColumns()) FROM item
+                ORDER BY pinned DESC, last_used_at DESC, id DESC
+                LIMIT ?
+                """, arguments: [limit])
         }
     }
 
@@ -180,7 +207,7 @@ final class HistoryStore: Sendable {
                 // 作为字面字符串匹配（trigram 子串），双引号转义避免 MATCH 语法歧义。
                 let match = "\"" + q.replacingOccurrences(of: "\"", with: "\"\"") + "\""
                 return try ClipItem.fetchAll(db, sql: """
-                    SELECT item.* FROM item
+                    SELECT \(Self.listColumns(prefix: "item")) FROM item
                     JOIN item_fts ON item_fts.rowid = item.id
                     WHERE item_fts MATCH ?
                     ORDER BY item.pinned DESC, item.last_used_at DESC, item.id DESC
@@ -193,7 +220,7 @@ final class HistoryStore: Sendable {
                     .replacingOccurrences(of: "_", with: "\\_")
                 let pattern = "%\(esc)%"
                 return try ClipItem.fetchAll(db, sql: """
-                    SELECT * FROM item
+                    SELECT \(Self.listColumns()) FROM item
                     WHERE plain_text LIKE ? ESCAPE '\\'
                        OR label      LIKE ? ESCAPE '\\'
                        OR app_name   LIKE ? ESCAPE '\\'
@@ -201,6 +228,14 @@ final class HistoryStore: Sendable {
                     LIMIT ?
                     """, arguments: [pattern, pattern, pattern, limit])
             }
+        }
+    }
+
+    /// 按 id 取完整 `plain_text`。列表只带预览文本，粘贴/分词前用此补全为全文。
+    /// 找不到该行（已被清理）返回 nil，调用方回退到列表所带的预览文本。
+    func fullText(id: Int64) async throws -> String? {
+        try await dbPool.read { db in
+            try String.fetchOne(db, sql: "SELECT plain_text FROM item WHERE id = ?", arguments: [id])
         }
     }
 
@@ -220,22 +255,26 @@ final class HistoryStore: Sendable {
 
     // MARK: - 清理（RetentionJanitor 用）
 
-    /// 未置顶且 `last_used_at < cutoff` 的条目（超时限）。
-    func expiredUnpinned(olderThan cutoffMs: Int64) async throws -> [ClipItem] {
+    /// 未置顶且 `last_used_at < cutoff` 的条目（超时限）。只取清理决策所需列。
+    func expiredUnpinned(olderThan cutoffMs: Int64) async throws -> [RetentionCandidate] {
         try await dbPool.read { db in
-            try ClipItem
-                .filter(sql: "pinned = 0 AND last_used_at < ?", arguments: [cutoffMs])
-                .fetchAll(db)
+            try RetentionCandidate.fetchAll(db, sql: """
+                SELECT id, byte_size AS byteSize, blob_path AS blobPath, thumb_path AS thumbPath
+                FROM item
+                WHERE pinned = 0 AND last_used_at < ?
+                """, arguments: [cutoffMs])
         }
     }
 
-    /// 未置顶条目，从旧到新（容量清理的删除顺序）。
-    func unpinnedOldestFirst() async throws -> [ClipItem] {
+    /// 未置顶条目，从旧到新（容量清理的删除顺序）。只取清理决策所需列。
+    func unpinnedOldestFirst() async throws -> [RetentionCandidate] {
         try await dbPool.read { db in
-            try ClipItem
-                .filter(sql: "pinned = 0")
-                .order(sql: "last_used_at ASC, id ASC")
-                .fetchAll(db)
+            try RetentionCandidate.fetchAll(db, sql: """
+                SELECT id, byte_size AS byteSize, blob_path AS blobPath, thumb_path AS thumbPath
+                FROM item
+                WHERE pinned = 0
+                ORDER BY last_used_at ASC, id ASC
+                """)
         }
     }
 

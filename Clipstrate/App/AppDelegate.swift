@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 预热唤出面板（常驻隐藏），⌥V 切换显示（不抢焦点）。
         let panel = PanelController(historyStore: historyStore, blobStore: blobStore, chopOverlayBuilder: nil)
-        let paste = PasteService(blobStore: blobStore)
+        let paste = PasteService(historyStore: historyStore, blobStore: blobStore)
         pasteService = paste
         panelController = panel
         hotkeyCenter.setSummonHandler { [weak panel] in panel?.toggle() }

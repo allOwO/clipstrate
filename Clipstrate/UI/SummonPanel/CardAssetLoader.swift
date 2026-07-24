@@ -12,12 +12,31 @@ final class CardAssetLoader: @unchecked Sendable {
     private let thumbnails = NSCache<NSString, CGImage>()
     private let richDocuments = NSCache<NSString, NSAttributedString>()
     private static let maximumRichBytes = 2 * 1024 * 1024
+    /// 内存压力监听：warning/critical 时清空图片与富文本缓存，保证峰值回落（性能预算）。
+    private var pressureSource: DispatchSourceMemoryPressure?
 
     private init() {
-        thumbnails.countLimit = 64
-        thumbnails.totalCostLimit = 24 * 1024 * 1024
-        richDocuments.countLimit = 64
-        richDocuments.totalCostLimit = 8 * 1024 * 1024
+        // 常驻预算 <30MB：缩略图 + 富文本缓存合计控制在 16MB 内（面板一次可见十余张缩略图足够）。
+        thumbnails.countLimit = 48
+        thumbnails.totalCostLimit = 12 * 1024 * 1024
+        richDocuments.countLimit = 32
+        richDocuments.totalCostLimit = 4 * 1024 * 1024
+        installMemoryPressureRelief()
+    }
+
+    /// 系统内存吃紧时主动释放缓存（NSCache 的被动回收之外，确保峰值可回落）。
+    private func installMemoryPressureRelief() {
+        let source = DispatchSource.makeMemoryPressureSource(
+            eventMask: [.warning, .critical],
+            queue: DispatchQueue.global(qos: .utility)
+        )
+        source.setEventHandler { [thumbnails, richDocuments] in
+            thumbnails.removeAllObjects()
+            richDocuments.removeAllObjects()
+            Log.panel.info("memory pressure: card asset caches cleared")
+        }
+        source.resume()
+        pressureSource = source
     }
 
     func thumbnail(named name: String, store: BlobStore) async -> CGImage? {

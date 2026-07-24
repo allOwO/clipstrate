@@ -27,14 +27,14 @@ final class RetentionJanitor: Sendable {
     /// 可注入参数版本（便于单测）。
     func runOnce(retention: Retention, diskCapBytes: Int64,
                  now: Int64 = HistoryStore.nowMillis()) async throws {
-        var deleted: [ClipItem] = []
+        var deleted: [RetentionCandidate] = []
 
         // 1. 超时限
         if let maxAge = retention.maxAgeSeconds {
             let cutoff = now - Int64(maxAge * 1000)
             let expired = try await store.expiredUnpinned(olderThan: cutoff)
             if !expired.isEmpty {
-                try await store.delete(ids: expired.compactMap(\.id))
+                try await store.delete(ids: expired.map(\.id))
                 deleted.append(contentsOf: expired)
             }
         }
@@ -42,14 +42,14 @@ final class RetentionJanitor: Sendable {
         // 2. 超容量：从旧到新删未置顶，直至总量 ≤ 上限（置顶不动）。
         var total = try await store.totalByteSize()
         if total > diskCapBytes {
-            var toDelete: [ClipItem] = []
+            var toDelete: [RetentionCandidate] = []
             for item in try await store.unpinnedOldestFirst() {
                 if total <= diskCapBytes { break }
                 toDelete.append(item)
                 total -= Int64(item.byteSize)
             }
             if !toDelete.isEmpty {
-                try await store.delete(ids: toDelete.compactMap(\.id))
+                try await store.delete(ids: toDelete.map(\.id))
                 deleted.append(contentsOf: toDelete)
             }
         }

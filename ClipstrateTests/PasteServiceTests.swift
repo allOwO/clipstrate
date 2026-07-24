@@ -123,6 +123,34 @@ final class PasteServiceTests: XCTestCase {
         XCTAssertEqual(postedCount, 1)
     }
 
+    /// 内存优化 C：列表条目只带预览文本，粘贴须按 id 回查完整全文写入剪贴板。
+    func testPasteFetchesFullTextForPreviewItem() async throws {
+        let context = try makeContext()
+        defer { cleanUp(context) }
+        let storeDir = context.tempDir.appendingPathComponent("db")
+        try FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
+        let store = try HistoryStore(path: storeDir.appendingPathComponent("history.sqlite").path)
+
+        let full = String(repeating: "z", count: HistoryStore.previewTextLength + 3000)
+        _ = try await store.upsert(ClipItem(kind: .text, plainText: full, contentHash: "big"), at: 1)
+
+        // 模拟 UI 拿到的列表条目：plain_text 已被截成预览。
+        let previewItem = try await store.page().first
+        XCTAssertEqual(previewItem?.plainText?.count, HistoryStore.previewTextLength)
+
+        let service = PasteService(
+            pasteboard: context.pasteboard,
+            historyStore: store,
+            blobStore: context.blobs,
+            isAXTrusted: { true },
+            postPasteKeystroke: {}
+        )
+        let result = await service.perform(item: previewItem!, plainText: true, action: .copy)
+
+        XCTAssertEqual(result, .copied)
+        XCTAssertEqual(context.pasteboard.string(forType: .string), full, "粘贴写入完整全文，而非列表预览")
+    }
+
     func testUnavailableImageDoesNotPostPaste() async {
         let context = try! makeContext()
         defer { cleanUp(context) }

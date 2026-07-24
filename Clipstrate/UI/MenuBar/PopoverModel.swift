@@ -80,5 +80,13 @@ final class PopoverModel: ObservableObject {
     func tearDown() {
         searchTask?.cancel()
         searchTask = nil
+        releaseItems()
+    }
+
+    /// Popover 收起时释放累积的分页条目（`loadNextPage` 会一路 append），避免关闭期间长期常驻；
+    /// 下次显示由 `PopoverView.task` 的 `reload()` 重新加载首页。
+    func releaseItems() {
+        items = []
+        canPaginate = true
     }
 }

@@ -165,4 +165,30 @@ final class HistoryStoreTests: XCTestCase {
             .contains { $0.hasPrefix("history-corrupt-") }
         XCTAssertTrue(quarantined, "损坏文件应留档，便于事后取证")
     }
+
+    // MARK: - 列表预览 / 全文回查（内存优化 C）
+
+    func testPageAndSearchReturnPreviewTruncatedText() async throws {
+        let long = String(repeating: "x", count: HistoryStore.previewTextLength + 5000)
+        let saved = try await store.upsert(text(long, hash: "long1", appName: "TestApp"), at: 1000)
+
+        // 列表：plain_text 截到预览长度，其余列不受影响。
+        let page = try await store.page()
+        XCTAssertEqual(page.first?.plainText?.count, HistoryStore.previewTextLength, "列表只带预览长度")
+        XCTAssertEqual(page.first?.contentHash, "long1", "非文本列原样返回")
+        XCTAssertEqual(page.first?.appName, "TestApp")
+
+        // 搜索（≥3 字符走 FTS trigram，命中同样只带预览）。
+        let hits = try await store.search("xxx")
+        XCTAssertEqual(hits.first?.plainText?.count, HistoryStore.previewTextLength, "搜索结果也只带预览")
+
+        // 全文回查拿到完整内容。
+        let full = try await store.fullText(id: saved.id!)
+        XCTAssertEqual(full?.count, long.count, "fullText 返回完整全文")
+    }
+
+    func testFullTextReturnsNilForMissingRow() async throws {
+        let missing = try await store.fullText(id: 99999)
+        XCTAssertNil(missing, "行不存在返回 nil，调用方回退预览")
+    }
 }
