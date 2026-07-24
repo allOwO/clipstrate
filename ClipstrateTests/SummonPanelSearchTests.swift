@@ -32,9 +32,11 @@ final class SummonPanelSearchTests: XCTestCase {
     }
 
     func testBareDigitAppendsToQueryWhenSearching() {
+        // 设计：裸数字经搜索输入路径（appendSearchCharacter）并入查询；
+        // `.digit` 命令只在按下数字修饰键（默认 ⌘）时产生，语义恒为“快速粘贴第 N 条”。
         let model = SummonPanelModel(historyStore: store)
         model.appendSearchCharacter("a")
-        _ = model.handle(.digit(3))
+        model.appendSearchCharacter("3")
         XCTAssertEqual(model.searchQuery, "a3", "搜索态裸数字并入查询")
     }
 
@@ -111,11 +113,12 @@ final class SummonPanelSearchTests: XCTestCase {
         XCTAssertEqual(model.searchQuery, "中文", "无需先按 / 即可把中文提交到查询")
         XCTAssertTrue(model.isSearching)
 
-        _ = model.handle(.digit(1))
-        for _ in 0..<10 where fieldEditor.string != "中文1" {
+        // 模型改写查询后须同步输入法的 field editor（用删字符验证；数字键已改为快贴语义）。
+        _ = model.deleteSearchCharacter()
+        for _ in 0..<10 where fieldEditor.string != "中" {
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertEqual(fieldEditor.string, "中文1", "面板命令改写查询后须同步输入法的 field editor")
+        XCTAssertEqual(fieldEditor.string, "中", "面板删字符后 field editor 同步")
 
         model.exitSearch()
         for _ in 0..<10 where !fieldEditor.string.isEmpty {

@@ -3,8 +3,18 @@ import XCTest
 
 /// T0.1 冒烟测试：设置基线默认值与枚举取值域。
 final class SettingsTests: XCTestCase {
+    /// 基线默认值只应反映“注册域默认”。先清掉这些键在 standard 持久域可能的残留，
+    /// 避免其他用例（向 UserDefaults.standard 写入且顺序在前）污染本用例。
+    private static let baselineKeys = [
+        SettingsKey.launchAtLogin, SettingsKey.plainTextDefault, SettingsKey.diskCapMB,
+        SettingsKey.retention, SettingsKey.digitModifier, SettingsKey.pressAction,
+        SettingsKey.returnAction, SettingsKey.panelStyle, SettingsKey.backupAutoICloud,
+        SettingsKey.backupIncludeHistory,
+    ]
+
     override func setUp() {
         super.setUp()
+        for key in Self.baselineKeys { UserDefaults.standard.removeObject(forKey: key) }
         Settings.registerDefaults()
     }
 
@@ -18,7 +28,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(Settings.pressAction, .paste)
         XCTAssertEqual(Settings.returnAction, .paste)
         XCTAssertEqual(Settings.panelStyle, .glass)
-        XCTAssertFalse(Settings.backupAutoICloud)
+        XCTAssertTrue(Settings.backupAutoICloud, "iCloud 自动备份默认开启")
         XCTAssertTrue(Settings.backupIncludeHistory)
     }
 

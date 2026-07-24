@@ -3,10 +3,12 @@ import XCTest
 
 final class SummonPanelViewTests: XCTestCase {
     func testVariantCCardStripWidthMatchesSpec() {
+        // 卡片条宽度随条数线性增长（1 张选中 252 + 其余各 128 + 间距 10），
+        // 上限为 maximumItemCount(200)；面板窗口再由 panelSize 夹到屏幕可视宽度、超出部分横向滚动。
         XCTAssertEqual(SummonPanelLayout.cardStripWidth(itemCount: 1), 252)
         XCTAssertEqual(SummonPanelLayout.cardStripWidth(itemCount: 2), 390)
         XCTAssertEqual(SummonPanelLayout.cardStripWidth(itemCount: 9), 1_356)
-        XCTAssertEqual(SummonPanelLayout.cardStripWidth(itemCount: 12), 1_356)
+        XCTAssertEqual(SummonPanelLayout.cardStripWidth(itemCount: 12), 1_770)
     }
 
     func testPanelWidthClampsToVisibleScreen() {

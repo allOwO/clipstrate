@@ -97,7 +97,7 @@ enum Settings {
             SettingsKey.panelItemCount: 50,
             SettingsKey.diskCapMB: 512,
             SettingsKey.retention: Retention.month.rawValue,
-            SettingsKey.backupAutoICloud: false,
+            SettingsKey.backupAutoICloud: true,
             SettingsKey.backupIncludeSettings: true,
             SettingsKey.backupIncludeIgnoreList: true,
             SettingsKey.backupIncludeHistory: true,

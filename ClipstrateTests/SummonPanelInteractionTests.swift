@@ -50,13 +50,14 @@ final class SummonPanelInteractionTests: XCTestCase {
             initialItems: [item("a"), item("b")]
         )
 
+        // 单击任意卡片 = 直接粘贴（走 returnAction），不再需要“先选中再点一次”。
         model.activateCard(at: 1)
         XCTAssertEqual(model.selectedIndex, 1)
-        XCTAssertTrue(calls.isEmpty)
+        XCTAssertEqual(calls.map(\.0), ["b"], "单击即粘贴")
         model.activateCard(at: 1)
-        XCTAssertEqual(calls.map(\.0), ["b"])
+        XCTAssertEqual(calls.map(\.0), ["b", "b"], "再次单击再次粘贴")
         model.handle(.activatePlainText)
-        XCTAssertEqual(calls.map(\.1), [false, true])
+        XCTAssertEqual(calls.map(\.1), [false, false, true])
     }
 
     func testEscapeReturnsFromActionLayerThenRequestsClose() {

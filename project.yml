@@ -37,10 +37,15 @@ targets:
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         ARCHS: arm64
-        # 发布 (M4) 改 YES 并公证；开发期关闭以便 AX/CGEvent 调试
-        ENABLE_HARDENED_RUNTIME: NO
-        MARKETING_VERSION: "0.1"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
+      configs:
+        # 发布公证要求 hardened runtime；仅 Release 开启。Debug 关闭，否则库校验会
+        # 拒绝 XCTest bundle 注入(ad-hoc 签名下测试宿主 SIGABRT)。AX/CGEvent 属 TCC 授权,不受影响。
+        Debug:
+          ENABLE_HARDENED_RUNTIME: NO
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
     info:
       path: Clipstrate/Info.plist
       properties:
