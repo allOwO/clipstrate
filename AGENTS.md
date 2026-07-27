@@ -20,7 +20,7 @@ xcodebuild -scheme Clipstrate test
 
 ## 硬约束（违反 = bug）
 
-- **性能预算**（规划 §5.1）：唤出 <100ms P95；击键搜索 <30ms；1000 字分词 <30ms；1 万条滚动 120Hz；常驻 <30MB；峰值 <100MB 且回落；冷启 <300ms；包体 <10MB。
+- **性能预算**（规划 §5.1）：唤出 <100ms P95；击键搜索 <30ms；1000 字分词 <30ms；滚动 120Hz（唤出面板显示上限 200 条，历史列表分页加载）；常驻 <30MB；峰值 <100MB 且回落；冷启 <300ms；包体 <10MB。
 - **依赖白名单**：GRDB.swift、KeyboardShortcuts。新增依赖必须先问用户。
 - **`#available` 只允许出现在三个接缝**：`DesignSystem/GlassSurface`、`Capture/PrivacyGate`、`DesignSystem/MotionPolicy`。
 - **主线程只做 UI**：DB/正则/分词/图片解码一律后台（02 §7 并发模型）。
