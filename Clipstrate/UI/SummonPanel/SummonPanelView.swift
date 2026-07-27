@@ -46,37 +46,61 @@ struct SummonPanelView: View {
                     if model.items.isEmpty {
                         emptyState
                     } else {
-                        LazyHStack(alignment: .bottom, spacing: DS.Metrics.cardSpacing) {
-                            ForEach(Array(model.items.enumerated()), id: \.element.contentHash) { index, item in
-                                SummonCardView(
-                                    item: item,
-                                    index: index,
-                                    isSelected: index == model.selectedIndex,
-                                    isActionLayer: index == model.selectedIndex && model.focus != .card,
-                                    focusedActionIndex: index == model.selectedIndex ? model.focus.actionIndex : nil,
-                                    blobStore: model.blobStore,
-                                    presentationEpoch: model.presentationEpoch,
-                                    isPanelPresented: model.isPanelPresented,
-                                    onActivate: { model.activateCard(at: index) },
-                                    onPlainText: { model.activateAction(0) },
-                                    onChop: { model.activateAction(1) },
-                                    onHover: { model.hoverSelect(at: index) }
-                                )
-                                // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
-                                // 不改变行高、不引起纵向重排或向下过冲。
-                                .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
-                                .id(cardID(item))
+                        // 卡片各自的玻璃归到一个容器里渲染（spacing 0：不让相邻卡的玻璃形状
+                        // 互相融合，保持「独立玻璃卡片」的观感），避免每张卡各起一遍背景采样。
+                        GlassEffectContainer(spacing: 0) {
+                            LazyHStack(alignment: .bottom, spacing: DS.Metrics.cardSpacing) {
+                                ForEach(Array(model.items.enumerated()), id: \.element.contentHash) { index, item in
+                                    SummonCardView(
+                                        item: item,
+                                        index: index,
+                                        isSelected: index == model.selectedIndex,
+                                        isActionLayer: index == model.selectedIndex && model.focus != .card,
+                                        focusedActionIndex: index == model.selectedIndex ? model.focus.actionIndex : nil,
+                                        blobStore: model.blobStore,
+                                        presentationEpoch: model.presentationEpoch,
+                                        isPanelPresented: model.isPanelPresented,
+                                        onActivate: { model.activateCard(at: index) },
+                                        onPlainText: { model.activateAction(0) },
+                                        onChop: { model.activateAction(1) },
+                                        onHover: { model.hoverSelect(at: index) }
+                                    )
+                                    // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
+                                    // 不改变行高、不引起纵向重排或向下过冲。
+                                    .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
+                                    .id(cardID(item))
+                                }
                             }
                         }
-                        .frame(minWidth: 0, minHeight: DS.Metrics.cardSelected.height, alignment: .bottomLeading)
+                        // 显式给出卡片条的精确总宽（cardStripWidth 与本条布局同一套公式）。
+                        // LazyHStack 只实体化视口内的卡，未实体化的宽度由 SwiftUI 估算；而本条
+                        // 卡片宽度不一致（选中 252 / 其余 128），估算值随滚动位置漂移，
+                        // ScrollView 的可滚动范围便忽长忽短——表现为「滑到一半突然滑不动」。
+                        // 高度同样定死：每张卡都在 cardSelected.height 的固定槽位里，
+                        // 两轴都不留给 SwiftUI 估算，contentSize 才稳定。
+                        .frame(
+                            width: stripWidth,
+                            height: DS.Metrics.cardSelected.height,
+                            alignment: .bottomLeading
+                        )
                         // 四周等量留白：卡片玻璃阴影在留白内羽化完，ScrollView 的裁剪
                         // 边界落在透明区——既不裁成硬线，也不向下铺出（下探）。
                         .padding(SummonPanelLayout.shadowPadding)
+                        // 命中兜底：面板是无边框透明窗口，卡间缝隙 / 未选中卡上方留白
+                        // 原本 hitTest 为 nil（点击穿透区）——光标落在缝里滚动手势会被
+                        // 窗口整段丢弃（「指针放缝里就划不动」）。近乎不可见的背景把整条
+                        // 滚动区变成可命中，也顺带避免缝隙点击误穿透到面板下方的 App。
+                        .background(Color.black.opacity(0.001))
                     }
                 }
                 .scrollIndicators(.hidden)
-                // 不裁剪滚动溢出：每张卡的玻璃投影各自完整羽化，不被 ScrollView 底边切成一条横线。
-                .scrollClipDisabled()
+                // 滚动一停就把选中对齐到光标下最后掠过的卡（滚动中挡悬停防抖，停下补跟手）。
+                .onScrollPhaseChange { _, newPhase in
+                    model.scrollPhaseChanged(isScrolling: newPhase != .idle)
+                }
+                // 不再 scrollClipDisabled：上面的 shadowPadding 已经把裁剪边界推到透明留白里，
+                // 阴影在留白内羽化完，裁剪不会切出硬线；保留裁剪则让滚出视口的卡片不再参与合成，
+                // 也不会画到 ScrollView 之外（原先会铺到提示胶囊/窗口边上）。
                 .onChange(of: model.selectedIndex) { _, index in
                     // 悬停触发的选中只放大不滚动；键盘导航才滚动定位（瞬时，无滚动动画）。
                     guard model.shouldAutoScrollToSelection(),
@@ -89,6 +113,14 @@ struct SummonPanelView: View {
             SummonHintPill()
         }
         .padding(.vertical, SummonPanelLayout.verticalPadding)
+    }
+
+    /// 卡片条的精确总宽，与 LazyHStack 的实际排布同一套公式（见 cardStripWidth）。
+    private var stripWidth: CGFloat {
+        SummonPanelLayout.cardStripWidth(
+            itemCount: model.items.count,
+            selectedIndex: model.selectedIndex
+        )
     }
 
     private func cardID(_ item: ClipItem) -> String {
@@ -222,14 +254,13 @@ private struct SummonCardView: View {
         isSelected ? DS.Metrics.cardSelected : DS.Metrics.cardUnselected
     }
 
-    private var presentation: ClipCardPresentation {
-        ClipCardPresentation(item: item)
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            content
+        // 构造一次 ClipCardPresentation 就要 trim 字符串（图片卡还要过 ByteCountFormatter），
+        // 而 header / content / 无障碍标签都要用它——按计算属性写会在一次 body 求值里重复构造。
+        let presentation = ClipCardPresentation(item: item)
+        return VStack(alignment: .leading, spacing: 0) {
+            header(presentation)
+            content(presentation)
             if isSelected, item.kind == .text {
                 actions
             }
@@ -267,7 +298,7 @@ private struct SummonCardView: View {
         .accessibilityLabel("第 \(index + 1) 条，\(presentation.typeLabel)，\(presentation.body)")
     }
 
-    private var header: some View {
+    private func header(_ presentation: ClipCardPresentation) -> some View {
         HStack(spacing: 5) {
             // 序号左置、不裁切。1–9 用强调色（对应 ⌘1–9 快捷键，便于一眼定位）；其余淡显。
             Text("\(index + 1)")
@@ -296,7 +327,7 @@ private struct SummonCardView: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(_ presentation: ClipCardPresentation) -> some View {
         switch item.kind {
         case .text:
             TextCardContent(

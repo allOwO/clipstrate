@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import SwiftUI
 
@@ -34,6 +35,12 @@ final class SummonPanelModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     /// 悬停触发的选中变更只放大、不滚动（见 hoverSelect / shouldAutoScrollToSelection）。
     private var suppressNextAutoScroll = false
+    /// 上一次被接受的悬停选择时的指针位置，供 hoverSelect 的位移判据用。
+    private var lastHoverLocation: CGPoint?
+    /// 滚动进行中：位移判据挡下的悬停记入 pendingHoverIndex，滚动停止后一次性对齐。
+    private var isScrolling = false
+    /// 滚动中最后掠过光标的卡；滚动结束时把选中对齐到它（跟手感），滚动中不动（防重排抖动）。
+    private var pendingHoverIndex: Int?
 
     init(
         historyStore: HistoryStore?,
@@ -57,6 +64,11 @@ final class SummonPanelModel: ObservableObject {
         selectedIndex = 0
         focus = .card
         isPanelPresented = true
+        // 面板常出现在光标处，卡片会「自己跑到指针下」；以当前指针位置起算，
+        // 唤出瞬间的悬停不算用户意图，默认选中仍是第一条。
+        lastHoverLocation = NSEvent.mouseLocation
+        pendingHoverIndex = nil
+        isScrolling = false
         presentationEpoch &+= 1
         resetSearchState()
         refresh()
@@ -155,6 +167,31 @@ final class SummonPanelModel: ObservableObject {
     /// 鼠标悬停即聚焦：把选中切到光标所在卡使其放大，与键盘左右选择齐平。
     /// 悬停触发的变更不自动滚动（滚动只应由键盘导航触发，否则鼠标会追着卡跑）。
     func hoverSelect(at index: Int) {
+        guard isPanelPresented, overlayView == nil,
+              items.indices.contains(index), index != selectedIndex else { return }
+        // 双指滑动时指针不动，卡片从指针下经过一样会触发 onHover。此时改选中会让卡片
+        // 尺寸切换（128↔252）在滚动中反复重排整条卡片条，看起来就是滑动一顿一跳。
+        // 滚动手势不移动光标，因此「指针一动没动」足以把这类非用户意图的悬停挡掉；
+        // 但滚动中最后掠过光标的卡要记下来，滚动一停就对齐（不然滚完选中框不跟手）。
+        let location = NSEvent.mouseLocation
+        if let last = lastHoverLocation,
+           abs(last.x - location.x) < 1, abs(last.y - location.y) < 1 {
+            if isScrolling { pendingHoverIndex = index }
+            return
+        }
+        lastHoverLocation = location
+        pendingHoverIndex = nil
+        suppressNextAutoScroll = true
+        selectedIndex = index
+        focus = .card
+    }
+
+    /// 卡片条滚动相位（onScrollPhaseChange）：滚动停止时把选中对齐到滚动中掠过光标的最后一张卡。
+    func scrollPhaseChanged(isScrolling scrolling: Bool) {
+        guard isScrolling != scrolling else { return }
+        isScrolling = scrolling
+        guard !scrolling, let index = pendingHoverIndex else { return }
+        pendingHoverIndex = nil
         guard isPanelPresented, overlayView == nil,
               items.indices.contains(index), index != selectedIndex else { return }
         suppressNextAutoScroll = true
@@ -286,9 +323,12 @@ final class SummonPanelModel: ObservableObject {
             results = (try? await historyStore.search(query, limit: SummonPanelLayout.searchResultLimit)) ?? []
         }
         guard query == searchQuery else { return }   // 期间查询词已变，丢弃过期结果
-        items = results
+        // 渲染条数守住 maximumItemCount（与 init 一致）：searchResultLimit(300) 高于它，
+        // 不截断会让卡片条实际卡数超出 cardStripWidth 的计量上限，滚动范围随之算短。
+        // 命中总数仍按未截断的结果显示。
+        items = Array(results.prefix(SummonPanelLayout.maximumItemCount))
         matchCount = results.count
-        selectedIndex = min(selectedIndex, max(0, results.count - 1))
+        selectedIndex = min(selectedIndex, max(0, items.count - 1))
         focus = .card
         onLayoutChange?()
     }

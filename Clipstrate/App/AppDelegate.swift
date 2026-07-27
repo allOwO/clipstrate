@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let ignoreListStore = IgnoreListStore.makeDefault()
     private let clipboardStack = ClipboardStack()
     private var settingsWindowController: SettingsWindowController?
+    /// 滚动事件营救（macOS 26 滚动事件坐标损坏导致拖动冻结的工作区，见类型注释）。
+    private let scrollRescue = ScrollEventRescue()
+    /// 快速轻扫惯性救援（macOS 26 SwiftUI 丢弃短手势惯性列的工作区，见类型注释）。
+    private let scrollAssist = MomentumScrollAssist()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 与 LSUIElement 双保险：无 Dock 图标、不抢激活态。
@@ -37,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         statusItemController = StatusItemController()
+        scrollRescue.install()
+        scrollAssist.install()
         startCapture()
 
         // 预热唤出面板（常驻隐藏），⌥V 切换显示（不抢焦点）。
@@ -183,6 +189,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popoverController?.tearDown()
         entityHUDController?.dismiss()
         ToastPresenter.shared.tearDown()
+        scrollRescue.uninstall()
+        scrollAssist.uninstall()
     }
 
     /// 堆栈开启时入栈（enqueue 内部判 enabled）；文本条目再做实体检测弹 EntityHUD（01 §4.1 B / §10）。
