@@ -51,6 +51,9 @@ struct ChopOverlayView: View {
         )
         .transition(MotionPolicy.overlayTransition)
         .focusable()
+        // 容器聚焦只为接收 onKeyPress；系统默认焦点环是方角蓝框，与圆角玻璃形状
+        // 不匹配（视觉上像多了一个蓝色长方形），关掉视觉、保留聚焦能力。
+        .focusEffectDisabled()
         .focused($hasKeyboardFocus)
         .onAppear { hasKeyboardFocus = true }
         .onKeyPress(phases: .down, action: handleKeyPress)
