@@ -111,9 +111,9 @@ final class SummonPanelInteractionTests: XCTestCase {
         XCTAssertEqual(sources, [.return])
     }
 
-    /// 滚动中指针静止：掠过的悬停被挡下（防重排抖动），但滚动一停选中要对齐到
-    /// 最后掠过光标的卡（跟手），且这种选中不触发自动滚动。
-    func testHoverDuringScrollAppliesWhenScrollingStops() {
+    /// 滚动是浏览意图：指针静止时从光标下掠过的卡也要实时选中放大（跟手），
+    /// 且这种选中不触发自动滚动；滚动停止后选中保持在最后掠过的卡。
+    func testHoverDuringScrollSelectsImmediately() {
         let model = SummonPanelModel(
             historyStore: nil,
             initialItems: (0..<10).map { item("h\($0)") }
@@ -122,12 +122,14 @@ final class SummonPanelInteractionTests: XCTestCase {
 
         model.scrollPhaseChanged(isScrolling: true)
         model.hoverSelect(at: 3)
+        XCTAssertEqual(model.selectedIndex, 3, "滚动中掠过光标的卡要实时选中")
+        XCTAssertFalse(model.shouldAutoScrollToSelection(), "悬停型选中不自动滚动定位")
+
         model.hoverSelect(at: 5)
-        XCTAssertEqual(model.selectedIndex, 0, "滚动中指针静止的悬停不得改选中")
+        XCTAssertEqual(model.selectedIndex, 5)
 
         model.scrollPhaseChanged(isScrolling: false)
-        XCTAssertEqual(model.selectedIndex, 5, "滚动停止后选中对齐到最后掠过的卡")
-        XCTAssertFalse(model.shouldAutoScrollToSelection(), "悬停型选中不自动滚动定位")
+        XCTAssertEqual(model.selectedIndex, 5, "滚动停止后选中保持在最后掠过的卡")
     }
 
     /// 非滚动状态下指针静止的悬停（如选中卡放大导致布局移动）不产生待定悬停，
