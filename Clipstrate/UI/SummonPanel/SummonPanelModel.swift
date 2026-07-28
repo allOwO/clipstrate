@@ -37,10 +37,8 @@ final class SummonPanelModel: ObservableObject {
     private var suppressNextAutoScroll = false
     /// 上一次被接受的悬停选择时的指针位置，供 hoverSelect 的位移判据用。
     private var lastHoverLocation: CGPoint?
-    /// 滚动进行中：位移判据挡下的悬停记入 pendingHoverIndex，滚动停止后一次性对齐。
+    /// 滚动进行中：滚动是明确的浏览意图，悬停实时选中；位移判据只在非滚动时生效。
     private var isScrolling = false
-    /// 滚动中最后掠过光标的卡；滚动结束时把选中对齐到它（跟手感），滚动中不动（防重排抖动）。
-    private var pendingHoverIndex: Int?
 
     init(
         historyStore: HistoryStore?,
@@ -67,7 +65,6 @@ final class SummonPanelModel: ObservableObject {
         // 面板常出现在光标处，卡片会「自己跑到指针下」；以当前指针位置起算，
         // 唤出瞬间的悬停不算用户意图，默认选中仍是第一条。
         lastHoverLocation = NSEvent.mouseLocation
-        pendingHoverIndex = nil
         isScrolling = false
         presentationEpoch &+= 1
         resetSearchState()
@@ -169,34 +166,25 @@ final class SummonPanelModel: ObservableObject {
     func hoverSelect(at index: Int) {
         guard isPanelPresented, overlayView == nil,
               items.indices.contains(index), index != selectedIndex else { return }
-        // 双指滑动时指针不动，卡片从指针下经过一样会触发 onHover。此时改选中会让卡片
-        // 尺寸切换（128↔252）在滚动中反复重排整条卡片条，看起来就是滑动一顿一跳。
-        // 滚动手势不移动光标，因此「指针一动没动」足以把这类非用户意图的悬停挡掉；
-        // 但滚动中最后掠过光标的卡要记下来，滚动一停就对齐（不然滚完选中框不跟手）。
+        // 双指滑动时指针不动，卡片从指针下经过一样会触发 onHover——滚动是用户在「扫」
+        // 卡片，光标下的卡要实时放大跟手（选中卡宽度 128↔252 切换时下游卡有一次平移，
+        // 但被选卡自身尾边不动、指针仍留在卡内，不会连锁振荡）。位移判据只挡非滚动
+        // 场景的被动悬停：唤出瞬间面板出现在光标下、刷新重排让卡片滑到指针下。
         let location = NSEvent.mouseLocation
-        if let last = lastHoverLocation,
+        if !isScrolling, let last = lastHoverLocation,
            abs(last.x - location.x) < 1, abs(last.y - location.y) < 1 {
-            if isScrolling { pendingHoverIndex = index }
             return
         }
         lastHoverLocation = location
-        pendingHoverIndex = nil
         suppressNextAutoScroll = true
         selectedIndex = index
         focus = .card
     }
 
-    /// 卡片条滚动相位（onScrollPhaseChange）：滚动停止时把选中对齐到滚动中掠过光标的最后一张卡。
+    /// 卡片条滚动相位（onScrollPhaseChange）：滚动中悬停实时选中，这里只维护
+    /// isScrolling，供 hoverSelect 的位移判据区分「滚动扫卡」与「被动悬停」。
     func scrollPhaseChanged(isScrolling scrolling: Bool) {
-        guard isScrolling != scrolling else { return }
         isScrolling = scrolling
-        guard !scrolling, let index = pendingHoverIndex else { return }
-        pendingHoverIndex = nil
-        guard isPanelPresented, overlayView == nil,
-              items.indices.contains(index), index != selectedIndex else { return }
-        suppressNextAutoScroll = true
-        selectedIndex = index
-        focus = .card
     }
 
     /// 供卡片条 `scrollTo` 判定：消费一次「悬停抑制」标记；hover 触发的选中变更返回 false（不滚动）。

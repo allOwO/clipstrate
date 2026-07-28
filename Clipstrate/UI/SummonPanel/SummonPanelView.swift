@@ -94,7 +94,7 @@ struct SummonPanelView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
-                // 滚动一停就把选中对齐到光标下最后掠过的卡（滚动中挡悬停防抖，停下补跟手）。
+                // 滚动相位喂给 model：滚动中悬停实时选中（扫卡跟手），非滚动时位移判据挡被动悬停。
                 .onScrollPhaseChange { _, newPhase in
                     model.scrollPhaseChanged(isScrolling: newPhase != .idle)
                 }
