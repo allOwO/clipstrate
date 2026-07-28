@@ -12,10 +12,31 @@ final class SettingsTests: XCTestCase {
         SettingsKey.backupIncludeHistory,
     ]
 
+    /// 测试宿主是真 App（同一 bundle id 的 defaults 域）：setUp 清键前必须留底、
+    /// tearDown 恢复，否则每跑一次测试就把开发机上这十个真实设置永久清空。
+    private var savedBaselineValues: [String: Any] = [:]
+
     override func setUp() {
         super.setUp()
-        for key in Self.baselineKeys { UserDefaults.standard.removeObject(forKey: key) }
+        for key in Self.baselineKeys {
+            if let value = UserDefaults.standard.object(forKey: key) {
+                savedBaselineValues[key] = value
+            }
+            UserDefaults.standard.removeObject(forKey: key)
+        }
         Settings.registerDefaults()
+    }
+
+    override func tearDown() {
+        for key in Self.baselineKeys {
+            if let value = savedBaselineValues[key] {
+                UserDefaults.standard.set(value, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        savedBaselineValues = [:]
+        super.tearDown()
     }
 
     func testBaselineDefaultsMatchSpecTable() {
