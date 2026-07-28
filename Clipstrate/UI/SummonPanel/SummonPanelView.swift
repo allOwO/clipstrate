@@ -72,10 +72,6 @@ struct SummonPanelView: View {
                                     // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                     // 不改变行高、不引起纵向重排或向下过冲。
                                     .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
-                                    // 波浪把邻卡放大到会与更远的卡轻微交叠：按「离选中卡
-                                    // 越近越靠上」定 z 序，交叠读作 Dock 式层叠而非穿插。
-                                    // 只随 selectedIndex 变化，不随指针逐帧重排。
-                                    .zIndex(Double(-abs(index - model.selectedIndex)))
                                     .id(cardID(item))
                                 }
                             }

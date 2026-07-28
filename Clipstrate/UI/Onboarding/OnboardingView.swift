@@ -232,7 +232,8 @@ private struct EffectsDemoCard: View {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(Color.primary.opacity(0.14 + 0.10 * falloff))
                         .frame(width: Self.cardSize.width, height: Self.cardSize.height)
-                        .scaleEffect(1 + (Self.demoMaxScale - 1) * falloff, anchor: .bottom)
+                        // 与正式实现一致：只变高（y 轴单向缩放），宽度不动、不交叠。
+                        .scaleEffect(x: 1, y: 1 + (Self.demoMaxScale - 1) * falloff, anchor: .bottom)
                 }
             }
             .frame(height: Self.cardSize.height * Self.demoMaxScale, alignment: .bottom)

@@ -14,10 +14,9 @@ enum WaveMagnify {
     /// 卡片 frame 都以它为参照，滚动时卡片 frame 逐帧变化即自动驱动波浪，无需指针事件。
     static let coordinateSpaceName = "summon-wave"
 
-    /// 未选中卡最大放大（2026-07-28 试用后二次拍板：1.08 在「滚动中实时选中」语义下
-    /// 几乎不可见——光标下的卡总是被排除的选中卡，邻卡落在衰减尾部）。提到 1.25 让
-    /// 轮廓成「凸」形；仍明显小于选中态放大（252/128≈1.97），裁剪上限（126×s≤212）
-    /// 也远未触及。
+    /// 未选中卡最大放大（2026-07-28 试用后二次拍板 1.25 成凸形；三次拍板改为**只变高**：
+    /// 均匀缩放会让邻卡边缘互相覆盖，改 y 轴单向缩放后宽度不动、永不交叠）。
+    /// 高度上仍明显小于选中态（196/126≈1.56），裁剪上限（126×s≤212）未触及。
     static let maxScale: CGFloat = 1.25
     /// 光标影响半径（与卡中心的水平距离，pt）。按「选中卡在光标下」的常态几何标定：
     /// 邻卡中心距光标约 200pt（选中半宽 126 + 间距 10 + 未选中半宽 64），540pt 半径
@@ -34,7 +33,8 @@ enum WaveMagnify {
         return 0.5 + 0.5 * cos(.pi * t)
     }
 
-    /// 卡片缩放：d=0 → maxScale，|d|≥radius → 1。gain ∈ [0,1] 为全局波浪权重。
+    /// 卡片**高度**缩放（宽度恒为 1）：d=0 → maxScale，|d|≥radius → 1。
+    /// gain ∈ [0,1] 为全局波浪权重。
     static func scale(distance: CGFloat, gain: CGFloat) -> CGFloat {
         guard gain > 0 else { return 1 }
         return 1 + (maxScale - 1) * falloff(distance: distance) * gain
@@ -108,7 +108,9 @@ struct WaveMagnifyModifier: ViewModifier {
             } else {
                 1
             }
-            return view.scaleEffect(scale, anchor: .bottom)
+            // 只变高（三次拍板）：均匀缩放会让邻卡边缘互相覆盖，y 轴单向缩放宽度不动、
+            // 永不交叠；代价是内容随卡身轻微纵向拉伸，幅度内可接受。
+            return view.scaleEffect(x: 1, y: scale, anchor: .bottom)
         }
     }
 }
