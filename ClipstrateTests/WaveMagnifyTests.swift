@@ -2,7 +2,8 @@ import XCTest
 @testable import Clipstrate
 
 /// 波浪放大（「完整特效」，01 §3.2）的纯函数与状态机测试。
-/// 参数拍板记录：prototype/wave-magnify.html（幅度 1.08 / 半径 220 / 余弦 / 选中卡不参与）。
+/// 参数历经多轮真机拍板收敛（记录见 prototype/NOTES.md），断言一律引用
+/// WaveMagnify 常量而非手抄数值，常量再调只需改设计约束类断言。
 @MainActor
 final class WaveMagnifyTests: XCTestCase {
     // MARK: - 衰减曲线
@@ -63,23 +64,71 @@ final class WaveMagnifyTests: XCTestCase {
 
     // MARK: - 键盘凸（四次拍板：指针优先，不在条内时按档位距离跟键盘）
 
-    func testKeyboardBumpMatchesPointerBumpGeometry() {
-        XCTAssertEqual(WaveMagnify.keyboardScale(indexDistance: 0), 1, "选中卡不参与")
-        // 与「光标停在选中卡中心」时按布局距离算出的邻卡缩放一致（两种驱动同源）。
+    /// neighborCenterDistance 是实现与测试共用的几何真源，这里用手写展开做独立对照，
+    /// 防止"实现和测试引用同一份错误公式"的同源陷阱。
+    func testNeighborCenterDistanceMatchesHandComputedLayout() {
         let neighbor1 = DS.Metrics.cardSelected.width / 2 + DS.Metrics.cardSpacing
             + DS.Metrics.cardUnselected.width / 2
         let pitch = DS.Metrics.cardUnselected.width + DS.Metrics.cardSpacing
+        for k in 1...5 {
+            XCTAssertEqual(
+                WaveMagnify.neighborCenterDistance(steps: k),
+                neighbor1 + pitch * CGFloat(k - 1),
+                accuracy: 1e-9,
+                "档位 \(k) 布局距离与手算不一致"
+            )
+        }
+    }
+
+    func testKeyboardBumpMatchesPointerBumpGeometry() {
+        XCTAssertEqual(WaveMagnify.keyboardScale(steps: 0), 1, "选中卡不参与")
+        // 与「光标停在选中卡中心」时按布局距离算出的邻卡缩放一致（两种驱动同源）。
         for k in 1...4 {
             XCTAssertEqual(
-                WaveMagnify.keyboardScale(indexDistance: k),
-                WaveMagnify.scale(distance: neighbor1 + pitch * CGFloat(k - 1), gain: 1),
+                WaveMagnify.keyboardScale(steps: k),
+                WaveMagnify.scale(distance: WaveMagnify.neighborCenterDistance(steps: k), gain: 1),
                 accuracy: 1e-9,
                 "档位 \(k) 与指针几何不一致"
             )
         }
-        XCTAssertGreaterThan(WaveMagnify.keyboardScale(indexDistance: 1), 1.15)
-        XCTAssertGreaterThan(WaveMagnify.keyboardScale(indexDistance: 2), 1.05)
-        XCTAssertLessThan(WaveMagnify.keyboardScale(indexDistance: 3), 1.02)
+        XCTAssertGreaterThan(WaveMagnify.keyboardScale(steps: 1), 1.15)
+        XCTAssertGreaterThan(WaveMagnify.keyboardScale(steps: 2), 1.05)
+        XCTAssertLessThan(WaveMagnify.keyboardScale(steps: 3), 1.02)
+    }
+
+    /// settledSteps 是动画事务的钳制档位：此档及之外键盘凸必须恒为 1，
+    /// 否则钳制会吞掉真实的视觉变化。半径/卡宽再调整时此断言是安全网。
+    func testSettledStepsIsTrulySettled() {
+        XCTAssertEqual(WaveMagnify.keyboardScale(steps: WaveMagnify.settledSteps), 1)
+        XCTAssertGreaterThanOrEqual(
+            WaveMagnify.neighborCenterDistance(steps: WaveMagnify.settledSteps),
+            WaveMagnify.radius,
+            "settledSteps 档位仍在影响半径内，事务钳制会截断可见动画"
+        )
+        XCTAssertGreaterThan(
+            WaveMagnify.keyboardScale(steps: WaveMagnify.settledSteps - 1), 1,
+            "settledSteps 应取最小的归位档，钳制才不浪费"
+        )
+    }
+
+    /// 双驱动源混合的纯函数性质：gain 两端退化为单源；中间态两项权重和守恒,
+    /// 全程不越峰、不为负（指针与键盘峰值同点叠加是最坏情形）。
+    func testBlendedDeltaConservesAmplitudeBounds() {
+        let peak = WaveMagnify.maxScale - 1
+        for gain in stride(from: CGFloat(0), through: 1, by: 0.1) {
+            let keyboardDelta = peak                                        // 键盘峰值
+            let pointerDelta = WaveMagnify.scale(distance: 0, gain: gain) - 1  // 指针峰值(自带 gain)
+            let blended = WaveMagnify.blendedDelta(
+                keyboardDelta: keyboardDelta, pointerDelta: pointerDelta, gain: gain
+            )
+            XCTAssertGreaterThanOrEqual(blended, 0, "gain=\(gain) 混合出负值")
+            XCTAssertEqual(blended, peak, accuracy: 1e-9,
+                           "峰值同点叠加时两项权重和应守恒为满幅")
+        }
+        XCTAssertEqual(WaveMagnify.blendedDelta(keyboardDelta: peak, pointerDelta: 0, gain: 0),
+                       peak, "gain=0 退化为纯键盘")
+        XCTAssertEqual(WaveMagnify.blendedDelta(keyboardDelta: peak, pointerDelta: 0.1, gain: 1),
+                       0.1, accuracy: 1e-9, "gain=1 键盘项完全让位")
     }
 
     /// 「完整特效」是配置项：关掉后唤出面板，指针波浪与键盘凸必须一并停用，

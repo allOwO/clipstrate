@@ -1,9 +1,9 @@
 import os
 import SwiftUI
 
-/// 「完整特效」波浪放大（01 §3.2）：光标附近的卡片按余弦衰减轻微放大，Dock 放大镜风格。
-/// 参数由 prototype/wave-magnify.html 拍板：幅度 1.08×、半径 220pt、余弦衰减、
-/// 跟随平滑 τ≈80ms、选中卡不参与（保持「选中 = ⏎ 粘贴目标」的语义）。
+/// 「完整特效」波浪放大（01 §3.2）：光标/键盘选中附近的卡片只在高度上按余弦衰减
+/// 隆起成「凸」形，Dock 放大镜风格。参数经多轮真机拍板收敛（历次记录见
+/// prototype/NOTES.md 与下方各常量注释），选中卡不参与（保持「选中 = ⏎ 粘贴目标」语义）。
 ///
 /// 纯变换驱动：只经 `.visualEffect { scaleEffect(_, anchor: .bottom) }` 施加，绝不改
 /// frame——布局驱动会触发 LazyHStack 整条重排，正是 2026-07-27 修掉的滚动卡顿根源
@@ -40,15 +40,31 @@ enum WaveMagnify {
         return 1 + (maxScale - 1) * falloff(distance: distance) * gain
     }
 
+    /// 「与选中卡相隔 k 档」的邻卡中心到选中卡中心的布局距离（k ≥ 1）。
+    /// 键盘凸与其测试共用此函数，「两种驱动几何同源」由代码保证而非三处手抄。
+    static func neighborCenterDistance(steps k: Int) -> CGFloat {
+        DS.Metrics.cardSelected.width / 2 + DS.Metrics.cardSpacing
+            + DS.Metrics.cardUnselected.width / 2
+            + CGFloat(k - 1) * (DS.Metrics.cardUnselected.width + DS.Metrics.cardSpacing)
+    }
+
+    /// 键盘凸在此档位之外恒为 1（neighborCenterDistance(4)=614 > radius）。
+    /// 动画事务的触发值按此钳制：更远的卡在选中变更时无视觉变化，不必陪跑事务。
+    static let settledSteps = 4
+
     /// 键盘凸（四次拍板）：指针不在条内时，凸形跟着键盘选中走。按「与选中卡的档位
     /// 距离」折算成布局距离，复用同一条余弦衰减——数值与「光标停在选中卡中心」时的
     /// 指针波浪完全一致（±1 约 1.20×、±2 约 1.08×、±3 归位），两种驱动观感同源。
-    static func keyboardScale(indexDistance k: Int) -> CGFloat {
+    static func keyboardScale(steps k: Int) -> CGFloat {
         guard k > 0 else { return 1 }
-        let d = DS.Metrics.cardSelected.width / 2 + DS.Metrics.cardSpacing
-            + DS.Metrics.cardUnselected.width / 2
-            + CGFloat(k - 1) * (DS.Metrics.cardUnselected.width + DS.Metrics.cardSpacing)
-        return scale(distance: d, gain: 1)
+        return scale(distance: neighborCenterDistance(steps: k), gain: 1)
+    }
+
+    /// 双驱动源混合（可单测的纯函数）：键盘凸按 (1-gain) 让位，指针项（自带 gain 权重）
+    /// 直接相加。两项上界分别为 (maxScale-1)(1-gain) 与 (maxScale-1)·gain，
+    /// 和恒 ≤ maxScale-1——过渡全程不越峰、不为负。
+    static func blendedDelta(keyboardDelta: CGFloat, pointerDelta: CGFloat, gain: CGFloat) -> CGFloat {
+        keyboardDelta * (1 - gain) + pointerDelta
     }
 }
 
@@ -72,9 +88,14 @@ final class WaveMagnifyState: ObservableObject {
 
     func pointerMoved(to x: CGFloat) {
         guard isEnabled else { return }
-        withAnimation(.easeOut(duration: WaveMagnify.followDuration)) {
-            pointerX = x
+        // 等值短路：滚动中光标物理静止时 AppKit 仍可能重发同坐标 hover，
+        // 不短路会让所有可见卡的修饰器每次空转重求值。
+        if pointerX != x {
+            withAnimation(.easeOut(duration: WaveMagnify.followDuration)) {
+                pointerX = x
+            }
         }
+        // 不能并入上面的分支：光标退出后原地重进时坐标未变，但 gain 要重新点亮。
         setGain(1, animated: true)
     }
 
@@ -105,25 +126,29 @@ final class WaveMagnifyState: ObservableObject {
 /// visualEffect 不参与布局与命中测试——选中判定、点击与滚动几何都仍按未缩放的布局盒。
 struct WaveMagnifyModifier: ViewModifier {
     @ObservedObject var wave: WaveMagnifyState
-    /// 本卡与选中卡的档位距离（index - selectedIndex）；0 = 选中卡，不参与波浪。
-    let indexDistance: Int
+    /// 本卡与选中卡的档位距离（非负）；0 = 选中卡，不参与波浪。
+    let distanceFromSelection: Int
 
     func body(content: Content) -> some View {
         // 闭包按值捕获快照；滚动中卡片 frame 逐帧变化会重跑闭包，指针不动波浪也跟着卡走。
-        let excluded = indexDistance == 0
+        let excluded = distanceFromSelection == 0
         let pointerX = excluded ? nil : wave.pointerX
         let gain = wave.gain
         let keyboardDelta = (excluded || !wave.isEnabled)
             ? 0
-            : WaveMagnify.keyboardScale(indexDistance: abs(indexDistance)) - 1
+            : WaveMagnify.keyboardScale(steps: distanceFromSelection) - 1
         return content.visualEffect { view, proxy in
-            var delta: CGFloat = keyboardDelta * (1 - gain)
-            if let pointerX, gain > 0 {
-                delta += WaveMagnify.scale(
+            let pointerDelta: CGFloat = if let pointerX, gain > 0 {
+                WaveMagnify.scale(
                     distance: proxy.frame(in: .named(WaveMagnify.coordinateSpaceName)).midX - pointerX,
                     gain: gain
                 ) - 1
+            } else {
+                0
             }
+            let delta = WaveMagnify.blendedDelta(
+                keyboardDelta: keyboardDelta, pointerDelta: pointerDelta, gain: gain
+            )
             // 只变高（三次拍板）：均匀缩放会让邻卡边缘互相覆盖，y 轴单向缩放宽度不动、
             // 永不交叠；代价是内容随卡身轻微纵向拉伸，幅度内可接受。
             return view.scaleEffect(x: 1, y: 1 + delta, anchor: .bottom)
@@ -131,16 +156,18 @@ struct WaveMagnifyModifier: ViewModifier {
         // 选中变更（档位距离变化）时，键盘凸的换挡和波浪交接与选中生长共用同一条
         // 曲线（DS.Anim.cardGrow）——同一张卡的「尺寸生长/回缩」与「波浪隆起/放平」
         // 必须同步，时长错位会互相打架。指针/滚动驱动的连续变化不经此键、不受影响。
+        // 触发值钳制到 settledSteps：更远的卡缩放恒为 1，选中变更时不给它们起空转事务
+        // （滚动中实时选中每秒切换多次，20 张实体化卡全体陪跑不是小数）。
         .animation(
             MotionPolicy.prefersReducedMotion ? nil : DS.Anim.cardGrow,
-            value: indexDistance
+            value: min(distanceFromSelection, WaveMagnify.settledSteps)
         )
     }
 }
 
 extension View {
     /// 波浪放大（「完整特效」）。挂在卡片视觉组合的最外层、槽位 frame 之内。
-    func waveMagnify(_ wave: WaveMagnifyState, indexDistance: Int) -> some View {
-        modifier(WaveMagnifyModifier(wave: wave, indexDistance: indexDistance))
+    func waveMagnify(_ wave: WaveMagnifyState, distanceFromSelection: Int) -> some View {
+        modifier(WaveMagnifyModifier(wave: wave, distanceFromSelection: distanceFromSelection))
     }
 }

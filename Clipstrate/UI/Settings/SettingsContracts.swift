@@ -71,6 +71,7 @@ enum SettingsCatalog {
         SettingsKey.plainTextDefault,
         SettingsKey.panelStyle,
         SettingsKey.panelItemCount,
+        SettingsKey.fullEffects,
         SettingsKey.diskCapMB,
         SettingsKey.retention,
         SettingsKey.backupAutoICloud,

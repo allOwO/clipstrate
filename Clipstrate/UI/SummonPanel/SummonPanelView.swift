@@ -69,7 +69,7 @@ struct SummonPanelView: View {
                                     // 布局与命中，选中卡不参与；挂在槽位 frame 之内、卡片
                                     // 视觉组合之外，缩放的是整张玻璃卡。指针在条内按光标算,
                                     // 不在时凸形按与选中卡的档位距离跟着键盘走。
-                                    .waveMagnify(model.wave, indexDistance: index - model.selectedIndex)
+                                    .waveMagnify(model.wave, distanceFromSelection: abs(index - model.selectedIndex))
                                     // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                     // 不改变行高、不引起纵向重排或向下过冲。
                                     .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
@@ -299,7 +299,7 @@ private struct SummonCardView: View {
             }
         }
         // 不再叠显式 shadow：glassEffect 自带四周均匀的 Liquid Glass 投影。
-        // 选中生长走 0.15s easeOut（零过冲，不会下探；固定槽位底对齐再加一道保险）：
+        // 选中生长走 DS.Anim.cardGrow 缓出（零过冲，不会下探；固定槽位底对齐再加一道保险）：
         // 滚动中实时选中每掠过一张卡切换一次，瞬时切换会让两卡之间整段 124pt 瞬移,
         // 表现为顿挫;缓动让相邻卡平滑滑移。减弱动态下回到瞬时切换。
         .animation(
