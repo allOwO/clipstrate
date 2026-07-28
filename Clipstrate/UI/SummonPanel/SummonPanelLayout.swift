@@ -3,9 +3,9 @@ import CoreGraphics
 /// 变体 C 的纯布局计算，供 NSPanel 尺寸与 SwiftUI 内容共用。
 enum SummonPanelLayout {
     /// 浏览显示的绝对上限（用户可在设置里调，但不超过此值，见 Settings.panelItemCount）。
-    static let maximumItemCount = 200
-    /// 设置里可选的「面板显示条数」档位。
-    static let itemCountOptions = [20, 50, 100, 200]
+    static let maximumItemCount = SettingsOptions.maxPanelItemCount
+    /// 设置里可选的「面板显示条数」档位（真源在 Shared 的 SettingsOptions，此处仅转发）。
+    static let itemCountOptions = SettingsOptions.panelItemCounts
     /// 面板窗口最多按这么多张卡计算宽度（带鱼屏也不铺满整屏）；更多条目在条内横向滚动，
     /// LazyHStack 只实体化视口内的卡，实体化数量因此有上界（内存不随历史条数线性增长）。
     static let maxVisibleCards = 20

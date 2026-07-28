@@ -97,4 +97,56 @@ final class SettingsTests: XCTestCase {
         XCTAssertNotEqual(Settings.panelItemCount, 999)
         XCTAssertNotEqual(defaults.string(forKey: SettingsKey.digitModifier), "invalid")
     }
+
+    /// 白名单曾经与档位表各写一份，Picker 加了 200 档后导入备份会静默丢弃该键。
+    /// 现在两者同源，这里守住“设置里选得到的档位都能导回来”。
+    func testBackupRestoreAcceptsEveryOptionValue() throws {
+        let defaults = UserDefaults.standard
+        let originalDiskCap = defaults.object(forKey: SettingsKey.diskCapMB)
+        let originalPanelItemCount = defaults.object(forKey: SettingsKey.panelItemCount)
+        defer {
+            if let originalDiskCap {
+                defaults.set(originalDiskCap, forKey: SettingsKey.diskCapMB)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.diskCapMB)
+            }
+            if let originalPanelItemCount {
+                defaults.set(originalPanelItemCount, forKey: SettingsKey.panelItemCount)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.panelItemCount)
+            }
+        }
+
+        for count in SettingsOptions.panelItemCounts {
+            defaults.removeObject(forKey: SettingsKey.panelItemCount)
+            try Settings.restore(
+                from: SettingsBackupDocument(
+                    booleans: [:],
+                    integers: [SettingsKey.panelItemCount: count],
+                    strings: [:]
+                )
+            )
+            XCTAssertEqual(defaults.integer(forKey: SettingsKey.panelItemCount), count,
+                           "面板条数档位 \(count) 应能从备份导入")
+        }
+
+        for cap in SettingsOptions.diskCapsMB {
+            defaults.removeObject(forKey: SettingsKey.diskCapMB)
+            try Settings.restore(
+                from: SettingsBackupDocument(
+                    booleans: [:],
+                    integers: [SettingsKey.diskCapMB: cap],
+                    strings: [:]
+                )
+            )
+            XCTAssertEqual(Settings.diskCapMB, cap, "磁盘上限档位 \(cap) 应能从备份导入")
+        }
+    }
+
+    /// UI 层的档位表只是 Shared 真源的转发，别再各写一份。
+    func testOptionTablesShareOneSource() {
+        XCTAssertEqual(SummonPanelLayout.itemCountOptions, SettingsOptions.panelItemCounts)
+        XCTAssertEqual(SummonPanelLayout.maximumItemCount, SettingsOptions.maxPanelItemCount)
+        XCTAssertEqual(SettingsCatalog.diskCapsMB, SettingsOptions.diskCapsMB)
+    }
 }
