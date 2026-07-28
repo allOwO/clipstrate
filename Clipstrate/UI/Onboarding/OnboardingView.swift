@@ -173,9 +173,10 @@ private struct EffectsDemoCard: View {
     private static let cardCount = 6
     private static let cardSize = CGSize(width: 26, height: 40)
     private static let spacing: CGFloat = 6
-    /// 迷你卡上 1.08× 只有 3pt，读不出来；示意幅度放大到 1.5×。
+    /// 迷你卡上按真实幅度只有几 pt，读不出来；示意幅度放大到 1.5×。
     private static let demoMaxScale: CGFloat = 1.5
-    private static let demoRadius: CGFloat = 56
+    /// 按真实凸形的覆盖比例（光标左右各约两张卡）折算到迷你卡距（32pt/张）。
+    private static let demoRadius: CGFloat = 80
 
     var body: some View {
         VStack(spacing: 8) {

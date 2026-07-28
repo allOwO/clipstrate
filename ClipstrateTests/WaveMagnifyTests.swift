@@ -34,17 +34,31 @@ final class WaveMagnifyTests: XCTestCase {
         XCTAssertEqual(WaveMagnify.scale(distance: 0, gain: 0), 1)
     }
 
-    /// 幅度约束（01 §3.2 / 调研结论 2）：未选中卡放大后不越出裁剪边界，
-    /// 且明显小于选中态放大避免语义混淆。
+    /// 幅度约束（01 §3.2，2026-07-28 二次拍板 1.25×）：未选中卡放大后不越出裁剪边界，
+    /// 且明显小于选中态放大（宽高两个维度都要留出差距）避免语义混淆。
     func testMaxScaleRespectsClipHeadroomAndSelectionSemantics() {
         let grownHeight = DS.Metrics.cardUnselected.height * WaveMagnify.maxScale
         let clipCeiling = DS.Metrics.cardSelected.height + SummonPanelLayout.shadowPadding
         XCTAssertLessThanOrEqual(grownHeight, clipCeiling, "波浪放大越出 ScrollView 裁剪边界")
 
-        let selectionGrowth = DS.Metrics.cardSelected.width / DS.Metrics.cardUnselected.width
-        XCTAssertLessThan(WaveMagnify.maxScale, selectionGrowth * 0.6,
-                          "波浪幅度须明显小于选中态放大（约 \(selectionGrowth)×）")
-        XCTAssertLessThanOrEqual(WaveMagnify.maxScale, 1.08, "拍板上限 1.08×")
+        let widthGrowth = DS.Metrics.cardSelected.width / DS.Metrics.cardUnselected.width
+        let heightGrowth = DS.Metrics.cardSelected.height / DS.Metrics.cardUnselected.height
+        XCTAssertLessThan(WaveMagnify.maxScale, min(widthGrowth, heightGrowth) * 0.9,
+                          "波浪幅度须明显小于选中态放大（宽 \(widthGrowth)× / 高 \(heightGrowth)×）")
+    }
+
+    /// 凸形覆盖（二次拍板）：以「光标位于选中卡中心」的常态几何计，
+    /// 左右第 1、2 张邻卡有可感知的放大，第 3 张基本归位。
+    func testBumpCoversTwoNeighborsAroundSelection() {
+        let neighbor1 = DS.Metrics.cardSelected.width / 2 + DS.Metrics.cardSpacing
+            + DS.Metrics.cardUnselected.width / 2
+        let pitch = DS.Metrics.cardUnselected.width + DS.Metrics.cardSpacing
+        let scale1 = WaveMagnify.scale(distance: neighbor1, gain: 1)
+        let scale2 = WaveMagnify.scale(distance: neighbor1 + pitch, gain: 1)
+        let scale3 = WaveMagnify.scale(distance: neighbor1 + pitch * 2, gain: 1)
+        XCTAssertGreaterThan(scale1, 1.15, "±1 邻卡应明显隆起")
+        XCTAssertGreaterThan(scale2, 1.05, "±2 邻卡应可感知放大")
+        XCTAssertLessThan(scale3, 1.02, "±3 应基本归位，凸形不摊平")
     }
 
     // MARK: - 状态机
