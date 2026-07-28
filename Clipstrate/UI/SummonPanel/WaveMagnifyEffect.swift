@@ -112,6 +112,12 @@ struct WaveMagnifyModifier: ViewModifier {
             // 永不交叠；代价是内容随卡身轻微纵向拉伸，幅度内可接受。
             return view.scaleEffect(x: 1, y: scale, anchor: .bottom)
         }
+        // 选中交接（excluded 翻转）时波浪缩放从 1.0↔波峰值瞬切会叠加顿挫，
+        // 给这一下单独一道缓动；指针/滚动驱动的连续变化不经此键、不受影响。
+        .animation(
+            MotionPolicy.prefersReducedMotion ? nil : .easeOut(duration: 0.12),
+            value: excluded
+        )
     }
 }
 

@@ -298,7 +298,13 @@ private struct SummonCardView: View {
             }
         }
         // 不再叠显式 shadow：glassEffect 自带四周均匀的 Liquid Glass 投影。
-        // 选中不做生长动画：尺寸瞬时切换（回到最初方案），彻底消除生长过程中的下探。
+        // 选中生长走 0.15s easeOut（零过冲，不会下探；固定槽位底对齐再加一道保险）：
+        // 滚动中实时选中每掠过一张卡切换一次，瞬时切换会让两卡之间整段 124pt 瞬移,
+        // 表现为顿挫;缓动让相邻卡平滑滑移。减弱动态下回到瞬时切换。
+        .animation(
+            MotionPolicy.prefersReducedMotion ? nil : DS.Anim.cardGrow,
+            value: isSelected
+        )
         .opacity(isEntered ? 1 : 0)
         .offset(y: entranceOffset)
         .scaleEffect(entranceScale, anchor: .bottom)
