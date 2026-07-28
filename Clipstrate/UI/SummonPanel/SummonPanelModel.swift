@@ -21,6 +21,10 @@ final class SummonPanelModel: ObservableObject {
     /// 输入客户端可以常驻准备；只有实际存在查询词时才显示搜索胶囊、进入搜索态。
     var isSearching: Bool { !searchQuery.isEmpty }
 
+    /// 波浪放大状态（「完整特效」）。刻意不并入本 model 的 @Published：指针 120Hz 移动
+    /// 只重求值观察它的 waveMagnify 修饰器，不触发面板 body / 卡片内容重算。
+    let wave = WaveMagnifyState()
+
     var onLayoutChange: (() -> Void)?
     /// 由 Controller 完成 App 激活与 panel 置 key；View/Model 不直接操纵窗口。
     var onIMEInputRequested: (() -> Void)?
@@ -70,12 +74,15 @@ final class SummonPanelModel: ObservableObject {
         pendingHoverIndex = nil
         isScrolling = false
         presentationEpoch &+= 1
+        // 设置与「减弱动态」在唤出时快照；面板显示期间改设置下次唤出生效。
+        wave.preparePresentation(enabled: MotionPolicy.fullEffectsActive)
         resetSearchState()
         refresh()
     }
 
     func endPresentation() {
         isPanelPresented = false
+        wave.pointerExited()
         dismissOverlay()
         resetSearchState()
     }
@@ -239,6 +246,9 @@ final class SummonPanelModel: ObservableObject {
 
     private func buildChopOverlay(for item: ClipItem) {
         guard let overlayBuilder, !(item.plainText ?? "").isEmpty else { return }
+        // 分词层打开后卡片条禁点（allowsHitTesting=false），hover 的 .ended 可能收不到，
+        // 这里主动让波浪退场，避免卡片条在 overlay 背后保持隆起。
+        wave.pointerExited()
         // overlay 完成（复制/粘贴/返回按钮）→ 关闭整个面板；esc 由面板监听器走 dismissOverlay 回卡片层。
         overlayView = overlayBuilder(ChopOverlayRequest(item: item)) { [weak self] in
             Task { @MainActor [weak self] in self?.onRequestClose?() }

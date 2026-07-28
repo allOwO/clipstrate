@@ -16,6 +16,7 @@ enum SettingsKey {
     // display
     static let panelStyle = "display.panelStyle"
     static let panelItemCount = "display.itemCount"
+    static let fullEffects = "display.fullEffects"
     // store
     static let diskCapMB = "store.diskCapMB"
     static let retention = "store.retention"
@@ -95,6 +96,7 @@ enum Settings {
             SettingsKey.plainTextDefault: false,
             SettingsKey.panelStyle: PanelStyle.glass.rawValue,
             SettingsKey.panelItemCount: 50,
+            SettingsKey.fullEffects: true,
             SettingsKey.diskCapMB: 512,
             SettingsKey.retention: Retention.month.rawValue,
             SettingsKey.backupAutoICloud: true,
@@ -126,6 +128,8 @@ enum Settings {
 
     static var launchAtLogin: Bool { store.bool(forKey: SettingsKey.launchAtLogin) }
     static var plainTextDefault: Bool { store.bool(forKey: SettingsKey.plainTextDefault) }
+    /// 「完整特效」（波浪放大等纯装饰动效）。生效与否还要过 MotionPolicy 的减弱动态闸门。
+    static var fullEffects: Bool { store.bool(forKey: SettingsKey.fullEffects) }
     static var diskCapMB: Int { store.integer(forKey: SettingsKey.diskCapMB) }
 
     /// 唤出面板默认展示的最近条数（限幅 10–200；搜索不受此限，见 searchResultLimit）。
@@ -210,6 +214,7 @@ enum Settings {
             booleans: [
                 SettingsKey.launchAtLogin: launchAtLogin,
                 SettingsKey.plainTextDefault: plainTextDefault,
+                SettingsKey.fullEffects: fullEffects,
                 SettingsKey.backupAutoICloud: backupAutoICloud,
                 SettingsKey.backupIncludeSettings: backupIncludeSettings,
                 SettingsKey.backupIncludeIgnoreList: backupIncludeIgnoreList,
@@ -247,6 +252,7 @@ enum Settings {
     private static let backupBooleanKeys: Set<String> = [
         SettingsKey.launchAtLogin,
         SettingsKey.plainTextDefault,
+        SettingsKey.fullEffects,
         SettingsKey.backupAutoICloud,
         SettingsKey.backupIncludeSettings,
         SettingsKey.backupIncludeIgnoreList,

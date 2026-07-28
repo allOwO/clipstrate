@@ -65,6 +65,10 @@ struct SummonPanelView: View {
                                         onChop: { model.activateAction(1) },
                                         onHover: { model.hoverSelect(at: index) }
                                     )
+                                    // 波浪放大（「完整特效」）：纯 visualEffect 变换，不参与
+                                    // 布局与命中，选中卡不参与；挂在槽位 frame 之内、卡片
+                                    // 视觉组合之外，缩放的是整张玻璃卡。
+                                    .waveMagnify(model.wave, excluded: index == model.selectedIndex)
                                     // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                     // 不改变行高、不引起纵向重排或向下过冲。
                                     .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
@@ -94,6 +98,17 @@ struct SummonPanelView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
+                // 波浪坐标系挂在 ScrollView 容器（不随内容滚动）：指针与卡片 frame 同源，
+                // 滚动中指针不动、卡片 frame 逐帧变化，波浪自动跟随流过的卡。
+                .coordinateSpace(name: WaveMagnify.coordinateSpaceName)
+                .onContinuousHover(coordinateSpace: .named(WaveMagnify.coordinateSpaceName)) { phase in
+                    switch phase {
+                    case .active(let location):
+                        model.wave.pointerMoved(to: location.x)
+                    case .ended:
+                        model.wave.pointerExited()
+                    }
+                }
                 // 滚动一停就把选中对齐到光标下最后掠过的卡（滚动中挡悬停防抖，停下补跟手）。
                 .onScrollPhaseChange { _, newPhase in
                     model.scrollPhaseChanged(isScrolling: newPhase != .idle)

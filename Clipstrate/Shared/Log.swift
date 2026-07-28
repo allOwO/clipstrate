@@ -16,8 +16,8 @@ enum Log {
     static let system = Logger(subsystem: subsystem, category: "system")
     static let chop = Logger(subsystem: subsystem, category: "chop")
 
-    /// signpost 点位（02 §9）：summon.show / search.keystroke / chop.tokenize
-    /// / capture.tick / db.page。用 "PointsOfInterest" category 以进
-    /// Instruments 的 Points of Interest 仪表。
+    /// signpost 点位（02 §9）：summon.show / summon.wave / search.keystroke
+    /// / chop.tokenize / capture.tick / db.page。用 "PointsOfInterest" category
+    /// 以进 Instruments 的 Points of Interest 仪表。
     static let signposter = OSSignposter(subsystem: subsystem, category: "PointsOfInterest")
 }
