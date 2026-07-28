@@ -113,9 +113,11 @@ struct WaveMagnifyModifier: ViewModifier {
             return view.scaleEffect(x: 1, y: scale, anchor: .bottom)
         }
         // 选中交接（excluded 翻转）时波浪缩放从 1.0↔波峰值瞬切会叠加顿挫，
-        // 给这一下单独一道缓动；指针/滚动驱动的连续变化不经此键、不受影响。
+        // 给这一下缓动，且与选中生长共用同一条曲线（DS.Anim.cardGrow）——同一张卡
+        // 的「尺寸生长/回缩」与「波浪隆起/放平」必须同步，时长错位会互相打架。
+        // 指针/滚动驱动的连续变化不经此键、不受影响。
         .animation(
-            MotionPolicy.prefersReducedMotion ? nil : .easeOut(duration: 0.12),
+            MotionPolicy.prefersReducedMotion ? nil : DS.Anim.cardGrow,
             value: excluded
         )
     }
