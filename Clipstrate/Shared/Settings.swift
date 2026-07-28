@@ -16,6 +16,7 @@ enum SettingsKey {
     // display
     static let panelStyle = "display.panelStyle"
     static let panelItemCount = "display.itemCount"
+    static let fullEffects = "display.fullEffects"
     // store
     static let diskCapMB = "store.diskCapMB"
     static let retention = "store.retention"
@@ -66,6 +67,19 @@ enum PanelStyle: String, CaseIterable, Sendable {
     case glass, compat
 }
 
+/// 数值型设置的档位表（唯一真源）。设置窗口的 Picker、备份导入的取值白名单都读这里，
+/// 别在别处再抄一份：曾经 Picker 加了 200 档而 `restore(from:)` 的白名单还停在旧表，
+/// 导入备份时该键被静默跳过。UI 层（SummonPanelLayout / SettingsCatalog）转发这里的值。
+enum SettingsOptions {
+    /// 面板显示条数档位（升序）。
+    static let panelItemCounts = [20, 50, 100, 200]
+    /// 磁盘占用上限档位（MB，升序）。
+    static let diskCapsMB = [256, 512, 1_024, 2_048]
+
+    /// 面板显示条数的绝对上限，即最大档位。
+    static let maxPanelItemCount = panelItemCounts.max() ?? 200
+}
+
 struct SettingsBackupDocument: Codable, Equatable, Sendable {
     static let currentVersion = 1
 
@@ -95,6 +109,7 @@ enum Settings {
             SettingsKey.plainTextDefault: false,
             SettingsKey.panelStyle: PanelStyle.glass.rawValue,
             SettingsKey.panelItemCount: 50,
+            SettingsKey.fullEffects: true,
             SettingsKey.diskCapMB: 512,
             SettingsKey.retention: Retention.month.rawValue,
             SettingsKey.backupAutoICloud: true,
@@ -126,12 +141,14 @@ enum Settings {
 
     static var launchAtLogin: Bool { store.bool(forKey: SettingsKey.launchAtLogin) }
     static var plainTextDefault: Bool { store.bool(forKey: SettingsKey.plainTextDefault) }
+    /// 「完整特效」（波浪放大等纯装饰动效）。生效与否还要过 MotionPolicy 的减弱动态闸门。
+    static var fullEffects: Bool { store.bool(forKey: SettingsKey.fullEffects) }
     static var diskCapMB: Int { store.integer(forKey: SettingsKey.diskCapMB) }
 
     /// 唤出面板默认展示的最近条数（限幅 10–200；搜索不受此限，见 searchResultLimit）。
     static var panelItemCount: Int {
         let value = store.integer(forKey: SettingsKey.panelItemCount)
-        return value == 0 ? 50 : min(max(value, 10), 200)
+        return value == 0 ? 50 : min(max(value, 10), SettingsOptions.maxPanelItemCount)
     }
 
     static var digitModifier: DigitModifier {
@@ -210,6 +227,7 @@ enum Settings {
             booleans: [
                 SettingsKey.launchAtLogin: launchAtLogin,
                 SettingsKey.plainTextDefault: plainTextDefault,
+                SettingsKey.fullEffects: fullEffects,
                 SettingsKey.backupAutoICloud: backupAutoICloud,
                 SettingsKey.backupIncludeSettings: backupIncludeSettings,
                 SettingsKey.backupIncludeIgnoreList: backupIncludeIgnoreList,
@@ -231,10 +249,11 @@ enum Settings {
             store.set(value, forKey: key)
         }
         for (key, value) in document.integers where backupIntegerKeys.contains(key) {
-            guard key != SettingsKey.diskCapMB || [256, 512, 1_024, 2_048].contains(value) else {
+            guard key != SettingsKey.diskCapMB || SettingsOptions.diskCapsMB.contains(value) else {
                 continue
             }
-            guard key != SettingsKey.panelItemCount || [20, 30, 50, 80, 100].contains(value) else {
+            guard key != SettingsKey.panelItemCount
+                    || SettingsOptions.panelItemCounts.contains(value) else {
                 continue
             }
             store.set(value, forKey: key)
@@ -247,6 +266,7 @@ enum Settings {
     private static let backupBooleanKeys: Set<String> = [
         SettingsKey.launchAtLogin,
         SettingsKey.plainTextDefault,
+        SettingsKey.fullEffects,
         SettingsKey.backupAutoICloud,
         SettingsKey.backupIncludeSettings,
         SettingsKey.backupIncludeIgnoreList,

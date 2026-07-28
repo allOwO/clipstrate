@@ -521,6 +521,83 @@ final class SummonPanelScrollDiagTests: XCTestCase {
         }
     }
 
+    // MARK: - 波浪放大（「完整特效」，01 §3.2）
+
+    /// 12. 波浪激活下滚动照常到底：特效是纯 visualEffect 变换，不触碰滚动几何与事件路径。
+    ///     指针钉在条中部、gain=1，滚动全程卡片逐帧过波峰——布局驱动式实现会在此重现
+    ///     「尺寸切换反复重排」的冻结,变换驱动应与基线用例同绿。
+    func testWaveActiveScrollReachesEnd() throws {
+        try setUpPanel()
+        model.wave.preparePresentation(enabled: true)
+        model.wave.pointerMoved(to: 500)
+        let stalled = scrollToEnd { performGesture(deltas: Array(repeating: -40, count: 20)) }
+        assertReachesEnd(stalled, "波浪激活")
+    }
+
+    /// 13. 波浪激活下惯性滚动（含 mayBegin/momentum 全相位）不被特效打断。
+    func testWaveActiveMomentumScrollReachesEnd() throws {
+        try setUpPanel()
+        model.wave.preparePresentation(enabled: true)
+        model.wave.pointerMoved(to: 500)
+        let momentum: [Int32] = stride(from: -60, through: -2, by: 4).map { Int32($0) }
+        let stalled = scrollToEnd {
+            performGesture(
+                deltas: Array(repeating: -30, count: 8),
+                mayBegin: true,
+                momentumDeltas: momentum
+            )
+        }
+        assertReachesEnd(stalled, "波浪激活惯性")
+    }
+
+    /// 14. 波浪开 / 关的滚动开销对照（报告用）：同一事件流各跑一遍，打印进程 CPU 时间与
+    ///     RSS 增量。pump 的 RunLoop 睡眠主导墙钟,CPU 时间才是特效开销的信号;只做
+    ///     倍数级防线断言,精确帧率以 Instruments 实测为准（02 §9 summon.wave 区间）。
+    func testWaveScrollOverheadReport() throws {
+        func cpuSeconds() -> Double {
+            var usage = rusage()
+            getrusage(RUSAGE_SELF, &usage)
+            let user = Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6
+            let system = Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6
+            return user + system
+        }
+        func residentMB() -> Double {
+            var info = mach_task_basic_info()
+            var count = mach_msg_type_number_t(
+                MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size
+            )
+            let result = withUnsafeMutablePointer(to: &info) { pointer in
+                pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                    task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+                }
+            }
+            return result == KERN_SUCCESS ? Double(info.resident_size) / 1_048_576 : -1
+        }
+
+        func measureRun(waveEnabled: Bool) throws -> (cpu: Double, rss: Double) {
+            try setUpPanel()
+            model.wave.preparePresentation(enabled: waveEnabled)
+            if waveEnabled { model.wave.pointerMoved(to: 500) }
+            let cpuBefore = cpuSeconds()
+            for _ in 0..<6 {
+                performGesture(deltas: Array(repeating: -40, count: 20))
+                performGesture(deltas: Array(repeating: 40, count: 20))
+            }
+            let cpu = cpuSeconds() - cpuBefore
+            let rss = residentMB()
+            panel.orderOut(nil)
+            return (cpu, rss)
+        }
+
+        let off = try measureRun(waveEnabled: false)
+        let on = try measureRun(waveEnabled: true)
+        print("[DEBUG-wave] 滚动 240 事件 CPU: off=\(String(format: "%.3f", off.cpu))s " +
+              "on=\(String(format: "%.3f", on.cpu))s (+\(String(format: "%.0f", (on.cpu / max(off.cpu, 0.001) - 1) * 100))%) " +
+              "RSS: off=\(String(format: "%.1f", off.rss))MB on=\(String(format: "%.1f", on.rss))MB")
+        XCTAssertLessThan(on.cpu, max(off.cpu, 0.05) * 3,
+                          "[DEBUG-wave] 波浪激活的滚动 CPU 开销超过基线 3 倍，疑似逐帧重排回归")
+    }
+
     /// 4. 确定性 fuzz：变长 delta + 时有时无的惯性段，长跑多轮（模拟人手的不规则滑动）。
     func testFuzzedGestureSoak() throws {
         try setUpPanel(itemCount: 120)

@@ -57,7 +57,8 @@ enum SettingsScrollSpy {
 
 enum SettingsCatalog {
     static let defaultWindowSize = CGSize(width: 780, height: 560)
-    static let diskCapsMB = [256, 512, 1_024, 2_048]
+    /// 真源在 Shared 的 SettingsOptions（备份导入白名单同源），此处仅转发给 Picker。
+    static let diskCapsMB = SettingsOptions.diskCapsMB
     static let retentions = Retention.allCases
 
     /// Every UserDefaults key surfaced by the settings window. Hotkey recorder
@@ -70,6 +71,7 @@ enum SettingsCatalog {
         SettingsKey.plainTextDefault,
         SettingsKey.panelStyle,
         SettingsKey.panelItemCount,
+        SettingsKey.fullEffects,
         SettingsKey.diskCapMB,
         SettingsKey.retention,
         SettingsKey.backupAutoICloud,

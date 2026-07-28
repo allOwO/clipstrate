@@ -130,6 +130,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         removeMonitors()
         hideTask?.cancel()
         hideTask = nil
+        // 波浪 signpost 区间收尾：退出时面板若可见且指针在条内，gain>0 的区间要闭合。
+        model.wave.pointerExited()
         model.tearDown()
         panel.orderOut(nil)
         isVisible = false

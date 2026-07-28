@@ -12,10 +12,31 @@ final class SettingsTests: XCTestCase {
         SettingsKey.backupIncludeHistory,
     ]
 
+    /// 测试宿主是真 App（同一 bundle id 的 defaults 域）：setUp 清键前必须留底、
+    /// tearDown 恢复，否则每跑一次测试就把开发机上这十个真实设置永久清空。
+    private var savedBaselineValues: [String: Any] = [:]
+
     override func setUp() {
         super.setUp()
-        for key in Self.baselineKeys { UserDefaults.standard.removeObject(forKey: key) }
+        for key in Self.baselineKeys {
+            if let value = UserDefaults.standard.object(forKey: key) {
+                savedBaselineValues[key] = value
+            }
+            UserDefaults.standard.removeObject(forKey: key)
+        }
         Settings.registerDefaults()
+    }
+
+    override func tearDown() {
+        for key in Self.baselineKeys {
+            if let value = savedBaselineValues[key] {
+                UserDefaults.standard.set(value, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        savedBaselineValues = [:]
+        super.tearDown()
     }
 
     func testBaselineDefaultsMatchSpecTable() {
@@ -96,5 +117,57 @@ final class SettingsTests: XCTestCase {
         XCTAssertNotEqual(Settings.diskCapMB, 999)
         XCTAssertNotEqual(Settings.panelItemCount, 999)
         XCTAssertNotEqual(defaults.string(forKey: SettingsKey.digitModifier), "invalid")
+    }
+
+    /// 白名单曾经与档位表各写一份，Picker 加了 200 档后导入备份会静默丢弃该键。
+    /// 现在两者同源，这里守住“设置里选得到的档位都能导回来”。
+    func testBackupRestoreAcceptsEveryOptionValue() throws {
+        let defaults = UserDefaults.standard
+        let originalDiskCap = defaults.object(forKey: SettingsKey.diskCapMB)
+        let originalPanelItemCount = defaults.object(forKey: SettingsKey.panelItemCount)
+        defer {
+            if let originalDiskCap {
+                defaults.set(originalDiskCap, forKey: SettingsKey.diskCapMB)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.diskCapMB)
+            }
+            if let originalPanelItemCount {
+                defaults.set(originalPanelItemCount, forKey: SettingsKey.panelItemCount)
+            } else {
+                defaults.removeObject(forKey: SettingsKey.panelItemCount)
+            }
+        }
+
+        for count in SettingsOptions.panelItemCounts {
+            defaults.removeObject(forKey: SettingsKey.panelItemCount)
+            try Settings.restore(
+                from: SettingsBackupDocument(
+                    booleans: [:],
+                    integers: [SettingsKey.panelItemCount: count],
+                    strings: [:]
+                )
+            )
+            XCTAssertEqual(defaults.integer(forKey: SettingsKey.panelItemCount), count,
+                           "面板条数档位 \(count) 应能从备份导入")
+        }
+
+        for cap in SettingsOptions.diskCapsMB {
+            defaults.removeObject(forKey: SettingsKey.diskCapMB)
+            try Settings.restore(
+                from: SettingsBackupDocument(
+                    booleans: [:],
+                    integers: [SettingsKey.diskCapMB: cap],
+                    strings: [:]
+                )
+            )
+            XCTAssertEqual(Settings.diskCapMB, cap, "磁盘上限档位 \(cap) 应能从备份导入")
+        }
+    }
+
+    /// UI 层的档位表只是 Shared 真源的转发，别再各写一份。
+    func testOptionTablesShareOneSource() {
+        XCTAssertEqual(SummonPanelLayout.itemCountOptions, SettingsOptions.panelItemCounts)
+        XCTAssertEqual(SummonPanelLayout.maximumItemCount, SettingsOptions.maxPanelItemCount)
+        XCTAssertEqual(SettingsCatalog.diskCapsMB, SettingsOptions.diskCapsMB)
     }
 }

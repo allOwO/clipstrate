@@ -1,0 +1,211 @@
+import XCTest
+@testable import Clipstrate
+
+/// 波浪放大（「完整特效」，01 §3.2）的纯函数与状态机测试。
+/// 参数历经多轮真机拍板收敛（记录见 prototype/NOTES.md），断言一律引用
+/// WaveMagnify 常量而非手抄数值，常量再调只需改设计约束类断言。
+@MainActor
+final class WaveMagnifyTests: XCTestCase {
+    // MARK: - 衰减曲线
+
+    func testScaleAtCursorIsMax() {
+        XCTAssertEqual(WaveMagnify.scale(distance: 0, gain: 1), WaveMagnify.maxScale, accuracy: 1e-9)
+    }
+
+    func testScaleBeyondRadiusIsIdentity() {
+        XCTAssertEqual(WaveMagnify.scale(distance: WaveMagnify.radius, gain: 1), 1, accuracy: 1e-9)
+        XCTAssertEqual(WaveMagnify.scale(distance: WaveMagnify.radius * 3, gain: 1), 1, accuracy: 1e-9)
+    }
+
+    func testScaleIsSymmetricAndMonotonicallyDecaying() {
+        var previous = WaveMagnify.scale(distance: 0, gain: 1)
+        for step in 1...20 {
+            let d = WaveMagnify.radius * CGFloat(step) / 20
+            let scale = WaveMagnify.scale(distance: d, gain: 1)
+            XCTAssertEqual(scale, WaveMagnify.scale(distance: -d, gain: 1), accuracy: 1e-9, "对称性 d=\(d)")
+            XCTAssertLessThanOrEqual(scale, previous, "单调衰减 d=\(d)")
+            previous = scale
+        }
+    }
+
+    func testGainScalesAmplitudeLinearly() {
+        let full = WaveMagnify.scale(distance: 0, gain: 1) - 1
+        let half = WaveMagnify.scale(distance: 0, gain: 0.5) - 1
+        XCTAssertEqual(half, full / 2, accuracy: 1e-9)
+        XCTAssertEqual(WaveMagnify.scale(distance: 0, gain: 0), 1)
+    }
+
+    /// 幅度约束（01 §3.2，2026-07-28 二次拍板 1.25×）：未选中卡放大后不越出裁剪边界，
+    /// 且明显小于选中态放大（宽高两个维度都要留出差距）避免语义混淆。
+    func testMaxScaleRespectsClipHeadroomAndSelectionSemantics() {
+        let grownHeight = DS.Metrics.cardUnselected.height * WaveMagnify.maxScale
+        let clipCeiling = DS.Metrics.cardSelected.height + SummonPanelLayout.shadowPadding
+        XCTAssertLessThanOrEqual(grownHeight, clipCeiling, "波浪放大越出 ScrollView 裁剪边界")
+
+        let widthGrowth = DS.Metrics.cardSelected.width / DS.Metrics.cardUnselected.width
+        let heightGrowth = DS.Metrics.cardSelected.height / DS.Metrics.cardUnselected.height
+        XCTAssertLessThan(WaveMagnify.maxScale, min(widthGrowth, heightGrowth) * 0.9,
+                          "波浪幅度须明显小于选中态放大（宽 \(widthGrowth)× / 高 \(heightGrowth)×）")
+    }
+
+    /// 凸形覆盖（二次拍板）：以「光标位于选中卡中心」的常态几何计，
+    /// 左右第 1、2 张邻卡有可感知的放大，第 3 张基本归位。
+    func testBumpCoversTwoNeighborsAroundSelection() {
+        let neighbor1 = DS.Metrics.cardSelected.width / 2 + DS.Metrics.cardSpacing
+            + DS.Metrics.cardUnselected.width / 2
+        let pitch = DS.Metrics.cardUnselected.width + DS.Metrics.cardSpacing
+        let scale1 = WaveMagnify.scale(distance: neighbor1, gain: 1)
+        let scale2 = WaveMagnify.scale(distance: neighbor1 + pitch, gain: 1)
+        let scale3 = WaveMagnify.scale(distance: neighbor1 + pitch * 2, gain: 1)
+        XCTAssertGreaterThan(scale1, 1.15, "±1 邻卡应明显隆起")
+        XCTAssertGreaterThan(scale2, 1.05, "±2 邻卡应可感知放大")
+        XCTAssertLessThan(scale3, 1.02, "±3 应基本归位，凸形不摊平")
+    }
+
+    // MARK: - 键盘凸（四次拍板：指针优先，不在条内时按档位距离跟键盘）
+
+    /// neighborCenterDistance 是实现与测试共用的几何真源，这里用手写展开做独立对照，
+    /// 防止"实现和测试引用同一份错误公式"的同源陷阱。
+    func testNeighborCenterDistanceMatchesHandComputedLayout() {
+        let neighbor1 = DS.Metrics.cardSelected.width / 2 + DS.Metrics.cardSpacing
+            + DS.Metrics.cardUnselected.width / 2
+        let pitch = DS.Metrics.cardUnselected.width + DS.Metrics.cardSpacing
+        for k in 1...5 {
+            XCTAssertEqual(
+                WaveMagnify.neighborCenterDistance(steps: k),
+                neighbor1 + pitch * CGFloat(k - 1),
+                accuracy: 1e-9,
+                "档位 \(k) 布局距离与手算不一致"
+            )
+        }
+    }
+
+    func testKeyboardBumpMatchesPointerBumpGeometry() {
+        XCTAssertEqual(WaveMagnify.keyboardScale(steps: 0), 1, "选中卡不参与")
+        // 与「光标停在选中卡中心」时按布局距离算出的邻卡缩放一致（两种驱动同源）。
+        for k in 1...4 {
+            XCTAssertEqual(
+                WaveMagnify.keyboardScale(steps: k),
+                WaveMagnify.scale(distance: WaveMagnify.neighborCenterDistance(steps: k), gain: 1),
+                accuracy: 1e-9,
+                "档位 \(k) 与指针几何不一致"
+            )
+        }
+        XCTAssertGreaterThan(WaveMagnify.keyboardScale(steps: 1), 1.15)
+        XCTAssertGreaterThan(WaveMagnify.keyboardScale(steps: 2), 1.05)
+        XCTAssertLessThan(WaveMagnify.keyboardScale(steps: 3), 1.02)
+    }
+
+    /// settledSteps 是动画事务的钳制档位：此档及之外键盘凸必须恒为 1，
+    /// 否则钳制会吞掉真实的视觉变化。半径/卡宽再调整时此断言是安全网。
+    func testSettledStepsIsTrulySettled() {
+        XCTAssertEqual(WaveMagnify.keyboardScale(steps: WaveMagnify.settledSteps), 1)
+        XCTAssertGreaterThanOrEqual(
+            WaveMagnify.neighborCenterDistance(steps: WaveMagnify.settledSteps),
+            WaveMagnify.radius,
+            "settledSteps 档位仍在影响半径内，事务钳制会截断可见动画"
+        )
+        XCTAssertGreaterThan(
+            WaveMagnify.keyboardScale(steps: WaveMagnify.settledSteps - 1), 1,
+            "settledSteps 应取最小的归位档，钳制才不浪费"
+        )
+    }
+
+    /// 双驱动源混合的纯函数性质：gain 两端退化为单源；中间态两项权重和守恒,
+    /// 全程不越峰、不为负（指针与键盘峰值同点叠加是最坏情形）。
+    func testBlendedDeltaConservesAmplitudeBounds() {
+        let peak = WaveMagnify.maxScale - 1
+        for gain in stride(from: CGFloat(0), through: 1, by: 0.1) {
+            let keyboardDelta = peak                                        // 键盘峰值
+            let pointerDelta = WaveMagnify.scale(distance: 0, gain: gain) - 1  // 指针峰值(自带 gain)
+            let blended = WaveMagnify.blendedDelta(
+                keyboardDelta: keyboardDelta, pointerDelta: pointerDelta, gain: gain
+            )
+            XCTAssertGreaterThanOrEqual(blended, 0, "gain=\(gain) 混合出负值")
+            XCTAssertEqual(blended, peak, accuracy: 1e-9,
+                           "峰值同点叠加时两项权重和应守恒为满幅")
+        }
+        XCTAssertEqual(WaveMagnify.blendedDelta(keyboardDelta: peak, pointerDelta: 0, gain: 0),
+                       peak, "gain=0 退化为纯键盘")
+        XCTAssertEqual(WaveMagnify.blendedDelta(keyboardDelta: peak, pointerDelta: 0.1, gain: 1),
+                       0.1, accuracy: 1e-9, "gain=1 键盘项完全让位")
+    }
+
+    /// 「完整特效」是配置项：关掉后唤出面板，指针波浪与键盘凸必须一并停用，
+    /// 行为退回无特效原样（键盘凸走 wave.isEnabled 同一道总闸）。
+    func testFullEffectsOffDisablesWholeWaveAtPresentation() {
+        Settings.registerDefaults()
+        let store = UserDefaults.standard
+        let original = store.object(forKey: SettingsKey.fullEffects)
+        defer {
+            if let original {
+                store.set(original, forKey: SettingsKey.fullEffects)
+            } else {
+                store.removeObject(forKey: SettingsKey.fullEffects)
+            }
+        }
+        store.set(false, forKey: SettingsKey.fullEffects)
+
+        let model = SummonPanelModel(historyStore: nil, initialItems: [])
+        model.beginPresentation()
+        XCTAssertFalse(model.wave.isEnabled, "设置关闭时波浪总闸必须关")
+        model.wave.pointerMoved(to: 300)
+        XCTAssertEqual(model.wave.gain, 0, "总闸关闭时指针也不得唤起波浪")
+        model.endPresentation()
+    }
+
+    // MARK: - 状态机
+
+    func testDisabledStateIgnoresPointer() {
+        let wave = WaveMagnifyState()
+        wave.preparePresentation(enabled: false)
+        wave.pointerMoved(to: 300)
+        XCTAssertNil(wave.pointerX)
+        XCTAssertEqual(wave.gain, 0)
+    }
+
+    func testEnabledStateTracksPointerAndFades() {
+        let wave = WaveMagnifyState()
+        wave.preparePresentation(enabled: true)
+        wave.pointerMoved(to: 300)
+        XCTAssertEqual(wave.pointerX, 300)
+        XCTAssertEqual(wave.gain, 1)
+        wave.pointerExited()
+        XCTAssertEqual(wave.gain, 0)
+    }
+
+    func testPreparePresentationResetsStalePointer() {
+        let wave = WaveMagnifyState()
+        wave.preparePresentation(enabled: true)
+        wave.pointerMoved(to: 300)
+        wave.preparePresentation(enabled: true)
+        XCTAssertNil(wave.pointerX, "上次唤出的指针位置不得泄漏到本次")
+        XCTAssertEqual(wave.gain, 0)
+    }
+
+    // MARK: - 设置
+
+    func testFullEffectsDefaultsOnAndSurvivesBackupRoundTrip() {
+        Settings.registerDefaults()
+        let store = UserDefaults.standard
+        let original = store.object(forKey: SettingsKey.fullEffects)
+        defer {
+            if let original {
+                store.set(original, forKey: SettingsKey.fullEffects)
+            } else {
+                store.removeObject(forKey: SettingsKey.fullEffects)
+            }
+        }
+
+        store.removeObject(forKey: SettingsKey.fullEffects)
+        XCTAssertTrue(Settings.fullEffects, "注册默认值应为开")
+
+        store.set(false, forKey: SettingsKey.fullEffects)
+        let document = Settings.makeBackupDocument()
+        XCTAssertEqual(document.booleans[SettingsKey.fullEffects], false, "应包含在备份文档中")
+
+        store.set(true, forKey: SettingsKey.fullEffects)
+        try? Settings.restore(from: document)
+        XCTAssertFalse(Settings.fullEffects, "恢复备份应还原该开关")
+    }
+}

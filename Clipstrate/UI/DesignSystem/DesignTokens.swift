@@ -42,9 +42,12 @@ enum DS {
     }
 
     enum Anim {
-        /// 卡片生长（未选中→选中）过渡：更快、几乎不过冲（高 damping），
-        /// 避免弹簧过冲造成「先放大过头再回弹/下探」。
-        static let cardGrow = Animation.spring(response: 0.22, dampingFraction: 0.92)
+        /// 卡片生长（未选中→选中）过渡：纯缓出、零过冲。历史教训：spring 过冲会
+        /// 造成「先放大过头再回弹/下探」，一度改为瞬时切换；滚动中实时选中落地后，
+        /// 瞬切表现为每掠过一张卡整条 124pt 瞬移（顿挫感），故改回动画但只用 easeOut。
+        /// 时长与波浪交接共用本常量：0.15s 时生长比波浪跟随（0.08s）慢半拍、
+        /// 且与 0.12s 的交接曲线错位（同一张卡高度变化打架），收敛到 0.12s 对齐。
+        static let cardGrow = Animation.easeOut(duration: 0.12)
         /// 进场：自基线上浮 20pt + scale 0.94→1，逐张错开 22ms（收紧后更利落）。
         static let entranceRise: CGFloat = 20
         static let entranceScale: CGFloat = 0.94

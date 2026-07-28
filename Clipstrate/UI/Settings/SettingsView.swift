@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.plainTextDefault) private var plainTextDefault = false
     @AppStorage(SettingsKey.panelStyle) private var panelStyleRaw = PanelStyle.glass.rawValue
     @AppStorage(SettingsKey.panelItemCount) private var panelItemCount = 50
+    @AppStorage(SettingsKey.fullEffects) private var fullEffects = true
     @AppStorage(SettingsKey.diskCapMB) private var diskCapMB = 512
     @AppStorage(SettingsKey.retention) private var retentionRaw = Retention.month.rawValue
     @AppStorage(SettingsKey.backupAutoICloud) private var backupAutoICloud = false
@@ -79,6 +80,7 @@ struct SettingsView: View {
         .onChange(of: plainTextDefault) { _, _ in changed(SettingsKey.plainTextDefault) }
         .onChange(of: panelStyleRaw) { _, _ in changed(SettingsKey.panelStyle) }
         .onChange(of: panelItemCount) { _, _ in changed(SettingsKey.panelItemCount) }
+        .onChange(of: fullEffects) { _, _ in changed(SettingsKey.fullEffects) }
         .onChange(of: diskCapMB) { _, _ in changed(SettingsKey.diskCapMB) }
         .onChange(of: retentionRaw) { _, _ in changed(SettingsKey.retention) }
         .onChange(of: backupAutoICloud) { _, _ in
@@ -381,13 +383,15 @@ struct SettingsView: View {
                     .frame(width: 110)
                 }
                 SettingsDivider()
+                SettingsToggleRow("完整特效（波浪放大）", isOn: $fullEffects)
+                SettingsDivider()
                 SettingsRow("外观") {
                     Text("跟随系统（浅色 / 深色）")
                         .font(.system(size: 12))
                         .foregroundStyle(DS.Colors.secondaryText)
                 }
             }
-            SettingsNote(text: "面板只显示最近 N 条；搜索始终扫描全部历史,不受此限。兼容模式适配旧版 macOS。")
+            SettingsNote(text: "面板只显示最近 N 条；搜索始终扫描全部历史,不受此限。兼容模式适配旧版 macOS。完整特效在系统「减弱动态效果」开启时自动停用；更改下次唤出面板生效。")
         }
     }
 

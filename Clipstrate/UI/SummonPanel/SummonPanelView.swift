@@ -65,6 +65,11 @@ struct SummonPanelView: View {
                                         onChop: { model.activateAction(1) },
                                         onHover: { model.hoverSelect(at: index) }
                                     )
+                                    // 波浪放大（「完整特效」）：纯 visualEffect 变换，不参与
+                                    // 布局与命中，选中卡不参与；挂在槽位 frame 之内、卡片
+                                    // 视觉组合之外，缩放的是整张玻璃卡。指针在条内按光标算,
+                                    // 不在时凸形按与选中卡的档位距离跟着键盘走。
+                                    .waveMagnify(model.wave, distanceFromSelection: abs(index - model.selectedIndex))
                                     // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                     // 不改变行高、不引起纵向重排或向下过冲。
                                     .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
@@ -94,6 +99,17 @@ struct SummonPanelView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
+                // 波浪坐标系挂在 ScrollView 容器（不随内容滚动）：指针与卡片 frame 同源，
+                // 滚动中指针不动、卡片 frame 逐帧变化，波浪自动跟随流过的卡。
+                .coordinateSpace(name: WaveMagnify.coordinateSpaceName)
+                .onContinuousHover(coordinateSpace: .named(WaveMagnify.coordinateSpaceName)) { phase in
+                    switch phase {
+                    case .active(let location):
+                        model.wave.pointerMoved(to: location.x)
+                    case .ended:
+                        model.wave.pointerExited()
+                    }
+                }
                 // 滚动相位喂给 model：滚动中悬停实时选中（扫卡跟手），非滚动时位移判据挡被动悬停。
                 .onScrollPhaseChange { _, newPhase in
                     model.scrollPhaseChanged(isScrolling: newPhase != .idle)
@@ -283,7 +299,13 @@ private struct SummonCardView: View {
             }
         }
         // 不再叠显式 shadow：glassEffect 自带四周均匀的 Liquid Glass 投影。
-        // 选中不做生长动画：尺寸瞬时切换（回到最初方案），彻底消除生长过程中的下探。
+        // 选中生长走 DS.Anim.cardGrow 缓出（零过冲，不会下探；固定槽位底对齐再加一道保险）：
+        // 滚动中实时选中每掠过一张卡切换一次，瞬时切换会让两卡之间整段 124pt 瞬移,
+        // 表现为顿挫;缓动让相邻卡平滑滑移。减弱动态下回到瞬时切换。
+        .animation(
+            MotionPolicy.prefersReducedMotion ? nil : DS.Anim.cardGrow,
+            value: isSelected
+        )
         .opacity(isEntered ? 1 : 0)
         .offset(y: entranceOffset)
         .scaleEffect(entranceScale, anchor: .bottom)

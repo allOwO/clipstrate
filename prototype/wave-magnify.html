@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>波浪放大原型 · Clipstrate「完整特效」</title>
+<style>
+  /* ============ 主题变量（取自 prototype/index.html） ============ */
+  :root {
+    --glass-bg: rgba(255,255,255,.62);
+    --glass-border: rgba(255,255,255,.55);
+    --glass-inner: rgba(255,255,255,.5);
+    --card-bg: rgba(255,255,255,.5);
+    --card-bg-hover: rgba(255,255,255,.72);
+    --chip-bg: rgba(255,255,255,.55);
+    --shadow-card: 0 2px 8px rgba(0,0,0,.08);
+    --shadow-sel: 0 18px 44px rgba(0,0,0,.22);
+    --text-1: rgba(0,0,0,.85);
+    --text-2: rgba(0,0,0,.55);
+    --text-3: rgba(0,0,0,.38);
+    --accent: #007AFF;
+    --sel-ring: #007AFF;
+    --page-bg: #eef0f4;
+    --panel-bg: rgba(255,255,255,.7);
+  }
+  html.dark {
+    --glass-bg: rgba(38,38,44,.58);
+    --glass-border: rgba(255,255,255,.14);
+    --glass-inner: rgba(255,255,255,.12);
+    --card-bg: rgba(255,255,255,.07);
+    --card-bg-hover: rgba(255,255,255,.13);
+    --chip-bg: rgba(255,255,255,.1);
+    --shadow-card: 0 2px 8px rgba(0,0,0,.25);
+    --shadow-sel: 0 18px 44px rgba(0,0,0,.5);
+    --text-1: rgba(255,255,255,.92);
+    --text-2: rgba(255,255,255,.6);
+    --text-3: rgba(255,255,255,.4);
+    --accent: #0A84FF;
+    --sel-ring: #0A84FF;
+    --page-bg: #1a1a1f;
+    --panel-bg: rgba(30,30,36,.7);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 13px/1.5 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    color: var(--text-1);
+    background: var(--page-bg);
+    padding-bottom: 48px;
+  }
+
+  header.page {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 18px 28px 12px;
+  }
+  header.page h1 { font-size: 16px; font-weight: 600; }
+  header.page .sub { font-size: 12px; color: var(--text-2); }
+  header.page .theme {
+    margin-left: auto; font: inherit; font-size: 12px; cursor: pointer;
+    padding: 4px 12px; border-radius: 999px;
+    border: .5px solid var(--glass-border); background: var(--chip-bg); color: var(--text-1);
+  }
+
+  /* ============ 舞台：模拟桌面壁纸 + 无框面板 ============ */
+  .stage {
+    position: relative;
+    height: 430px;
+    margin: 0 28px;
+    border-radius: 18px;
+    overflow: hidden;
+    background:
+      radial-gradient(620px 340px at 12% 18%, #ff9a62cc, transparent 65%),
+      radial-gradient(700px 420px at 85% 12%, #6ec3ffd0, transparent 62%),
+      radial-gradient(560px 420px at 55% 95%, #b78cffc9, transparent 60%),
+      radial-gradient(500px 300px at 30% 80%, #6effb3a8, transparent 62%),
+      linear-gradient(160deg, #3a4a6b, #22283a);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    user-select: none;
+  }
+  /* 壁纸上的杂物：让玻璃的 backdrop blur 有东西可采 */
+  .decor { position: absolute; inset: 0; pointer-events: none; color: rgba(255,255,255,.5); }
+  .decor .txt { position: absolute; font-size: 13px; white-space: nowrap; }
+  .decor .win {
+    position: absolute; border-radius: 10px;
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28);
+  }
+
+  .status {
+    position: absolute; top: 12px; right: 14px;
+    font-size: 11px; color: #fff; background: rgba(0,0,0,.4);
+    padding: 4px 10px; border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============ 卡片条（几何 1:1 对应 SummonPanelLayout / DS.Metrics） ============ */
+  /* scroller = ScrollView：四周 16px 留白（shadowPadding），越界即裁剪 */
+  .scroller {
+    position: relative;
+    max-width: calc(100% - 48px);
+    padding: 16px;                 /* SummonPanelLayout.shadowPadding */
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .scroller::-webkit-scrollbar { display: none; }
+  .scroller.show-clip { box-shadow: inset 0 0 0 1px rgba(255,60,60,.9); }
+
+  .strip {
+    position: relative;   /* 命中测试用 offsetLeft:让卡片的 offsetParent 是 strip 本身 */
+    display: flex; align-items: flex-end;   /* 底对齐一条基线 */
+    gap: 10px;                               /* DS.Metrics.cardSpacing */
+    height: 196px;                           /* cardSelected.height 固定槽高 */
+    width: max-content;
+  }
+
+  .card {
+    position: relative;
+    flex: none;
+    width: 128px; height: 126px;             /* cardUnselected */
+    border-radius: 20px;                     /* cardCornerRadius */
+    padding: 10px;
+    background: var(--card-bg);
+    border: .5px solid var(--glass-border);
+    box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-inner);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    backdrop-filter: blur(30px) saturate(180%);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    transform-origin: 50% 100%;               /* anchor: .bottom */
+    will-change: transform;
+    cursor: pointer;
+  }
+  .card.selected {
+    width: 252px; height: 196px;              /* cardSelected，瞬时切换（与原生一致） */
+    background: var(--card-bg-hover);
+    box-shadow: var(--shadow-sel), 0 0 0 2.5px var(--sel-ring), inset 0 1px 0 var(--glass-inner);
+  }
+
+  .card .kind {
+    display: flex; align-items: center; gap: 5px;
+    height: 16px; margin-bottom: 6px;
+    font-size: 10px; letter-spacing: .04em; color: var(--text-3);
+  }
+  .card .idx {
+    min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px; display: grid; place-items: center;
+    font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .card .idx.dim { color: var(--text-2); background: color-mix(in srgb, var(--text-2) 12%, transparent); }
+  .card .app { margin-left: auto; font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
+
+  .card .body {
+    flex: 1; min-height: 0;
+    font-size: 11.5px; line-height: 1.55; color: var(--text-1);
+    overflow: hidden;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+    word-break: break-all;
+  }
+  .card.selected .body { font-size: 12.5px; -webkit-line-clamp: 6; }
+
+  .card .thumb {
+    flex: 1; min-height: 0; border-radius: 10px;
+    display: grid; place-items: center; font-size: 30px;
+    background: linear-gradient(135deg, #7fb2ff, #b78cff);
+    color: #fff;
+  }
+  .card .thumb.file { background: color-mix(in srgb, var(--text-2) 10%, transparent); }
+  .card .meta { font-size: 10px; color: var(--text-2); margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .card .actions { display: none; gap: 6px; margin-top: 8px; }
+  .card.selected .actions.avail { display: flex; }
+  .card .actions span {
+    font-size: 11.5px; padding: 4px 10px; border-radius: 999px;
+    border: .5px solid var(--glass-border); background: var(--chip-bg); color: var(--text-1);
+  }
+
+  .hintpill {
+    margin-top: 18px;                        /* DS.Metrics.hintPillGap */
+    font-size: 11px; color: var(--text-2);
+    padding: 7px 16px; border-radius: 999px;
+    background: var(--glass-bg);
+    border: .5px solid var(--glass-border);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    backdrop-filter: blur(30px) saturate(180%);
+  }
+  .hintpill b { font-weight: 500; color: var(--text-1); }
+
+  /* ============ 控制台 ============ */
+  .controls {
+    margin: 20px 28px 0;
+    padding: 18px 22px;
+    border-radius: 14px;
+    background: var(--panel-bg);
+    border: .5px solid var(--glass-border);
+  }
+  .controls h2 { font-size: 13px; margin-bottom: 12px; }
+  .presets { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .presets button {
+    font: inherit; font-size: 12px; cursor: pointer;
+    padding: 5px 14px; border-radius: 999px;
+    border: .5px solid var(--glass-border); background: var(--chip-bg); color: var(--text-1);
+  }
+  .presets button.active { background: var(--accent); border-color: transparent; color: #fff; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px 28px;
+  }
+  .ctl label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+  .ctl output { font-variant-numeric: tabular-nums; color: var(--text-1); }
+  .ctl input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ctl select {
+    font: inherit; font-size: 12px; width: 100%; padding: 3px 6px;
+    border-radius: 6px; border: .5px solid var(--glass-border);
+    background: var(--chip-bg); color: var(--text-1);
+  }
+  .toggles { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 16px; font-size: 12px; }
+  .toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-1); }
+  .toggles input { accent-color: var(--accent); }
+
+  .notes { margin: 14px 28px 0; font-size: 12px; color: var(--text-2); line-height: 1.8; }
+  .notes b { color: var(--text-1); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<header class="page">
+  <h1>「完整特效」波浪放大 · 抛弃型原型</h1>
+  <span class="sub">滚动 / 移动光标看效果 · ←→ 键盘选卡 · 参数拍板后废弃</span>
+  <button class="theme" id="themeBtn">明暗切换</button>
+</header>
+
+<div class="stage" id="stage">
+  <div class="decor" id="decor"></div>
+  <div class="status" id="status">— fps</div>
+
+  <div class="scroller" id="scroller">
+    <div class="strip" id="strip"></div>
+  </div>
+  <div class="hintpill"><b>←→</b> 选择 · <b>⏎</b> / 点击 粘贴 · <b>⌥⏎</b> 纯文本 · <b>Tab</b> 分词 · <b>esc</b> 关闭</div>
+</div>
+
+<section class="controls">
+  <h2>波浪参数</h2>
+  <div class="presets" id="presets"></div>
+  <div class="grid">
+    <div class="ctl">
+      <label>未选中卡最大放大 <output id="ampOut"></output></label>
+      <input type="range" id="amp" min="1.00" max="1.12" step="0.005">
+    </div>
+    <div class="ctl">
+      <label>选中卡最大放大（1.00 = 不参与波浪） <output id="ampSelOut"></output></label>
+      <input type="range" id="ampSel" min="1.00" max="1.08" step="0.005">
+    </div>
+    <div class="ctl">
+      <label>影响半径（光标到卡中心的水平距离） <output id="radiusOut"></output></label>
+      <input type="range" id="radius" min="100" max="400" step="10">
+    </div>
+    <div class="ctl">
+      <label>衰减曲线</label>
+      <select id="curve">
+        <option value="cos">余弦（Dock 风，肩部圆润）</option>
+        <option value="gauss">高斯（中心更尖、尾部更长）</option>
+        <option value="tri">线性（对照组，偏硬）</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label>平滑时间常数（0 = 直接跟手） <output id="tauOut"></output></label>
+      <input type="range" id="tau" min="0" max="200" step="10">
+    </div>
+  </div>
+  <div class="toggles">
+    <label><input type="checkbox" id="waveOn" checked> 完整特效（本开关对应设置项）</label>
+    <label><input type="checkbox" id="hoverSel" checked> 悬停即选中（与正式版一致）</label>
+    <label><input type="checkbox" id="reduceMotion"> 模拟「减弱动态效果」（强制关特效）</label>
+    <label><input type="checkbox" id="showClip"> 显示 ScrollView 裁剪边界</label>
+  </div>
+</section>
+
+<div class="notes">
+  <b>映射到原生：</b>每张卡 <code>.visualEffect { $0.scaleEffect(s, anchor: .bottom) }</code>，s 由「卡中心 ↔ 光标水平距离」过衰减曲线得出，逐帧向目标值指数趋近（平滑常数即 τ）。纯变换、不动 frame，不触发 LazyHStack 重排。<br>
+  <b>硬上限：</b>选中卡上方留白仅 16pt，1.08× 即触顶（196×1.08≈212），滑杆已按此封顶；未选中卡封顶 1.12×，且建议 ≤1.08 以免和「选中 = ⏎ 粘贴目标」的语义打架。<br>
+  <b>拍板项：</b>① 幅度 / 半径 / 曲线 / 平滑；② 选中卡是否参与波浪（默认不参与）；③ 设置项默认开还是默认关。
+</div>
+
+<script>
+'use strict';
+
+/* ============ 数据与卡片构建 ============ */
+const ITEMS = [
+  { kind: 'text', app: '备忘录', body: '周四下午 3 点和设计组对一遍唤出面板的新特效,记得带上 Instruments 的帧率记录。' },
+  { kind: 'text', app: 'Safari', body: 'https://developer.apple.com/documentation/swiftui/view/visualeffect(_:)' },
+  { kind: 'rich', app: 'Pages', body: '<b>会议纪要</b>:波浪放大幅度控制在 <span style="color:#e8590c">1.08× 以内</span>,与选中态语义区分。' },
+  { kind: 'image', app: '截屏', meta: '1280×800 · PNG · 1.2 MB' },
+  { kind: 'text', app: '终端', body: 'xcodebuild -scheme Clipstrate test MARKETING_VERSION=0.4.0-alpha.1' },
+  { kind: 'file', app: '访达', name: 'wave-magnify-spec.md', meta: '~/Documents/specs' },
+  { kind: 'text', app: '微信', body: '好的,那就先按余弦衰减做一版原型,半径大概两张卡多一点,看看手感。' },
+  { kind: 'text', app: 'Xcode', body: 'let falloff = 0.5 + 0.5 * cos(.pi * min(d / radius, 1))' },
+  { kind: 'text', app: 'Mail', body: '收货地址:上海市徐汇区漕溪北路 88 号 2201 室,周末白天都有人在。' },
+  { kind: 'image', app: 'Safari', meta: '640×640 · JPEG · 380 KB' },
+  { kind: 'text', app: '词典', body: 'magnification /ˌmæɡnɪfɪˈkeɪʃn/ n. 放大;放大倍率' },
+  { kind: 'text', app: '日历', body: '0.4.0-alpha 验收:滚动 120Hz 帧率截图 + 常驻内存 <30MB 的 Instruments 记录。' },
+  { kind: 'file', app: '访达', name: 'frame-trace.trace', meta: '~/Desktop' },
+  { kind: 'text', app: 'Safari', body: 'The Dock magnifies icons smoothly as the pointer approaches, using a cosine falloff.' },
+  { kind: 'text', app: '备忘录', body: '13812345678 王师傅 周三上午送货' },
+  { kind: 'text', app: '终端', body: 'git switch feat/wave-magnify-effect' },
+];
+const KIND_LABEL = { text: '文本', rich: '富文本', image: '图片', file: '文件' };
+
+const strip = document.getElementById('strip');
+const scroller = document.getElementById('scroller');
+
+const cards = ITEMS.map((item, i) => {
+  const el = document.createElement('div');
+  el.className = 'card';
+  const idxCls = i < 9 ? 'idx' : 'idx dim';
+  let inner = `<div class="kind"><span class="${idxCls}">${i + 1}</span>${KIND_LABEL[item.kind]}<span class="app">${item.app}</span></div>`;
+  if (item.kind === 'image') {
+    inner += `<div class="thumb">🖼</div><div class="meta">${item.meta}</div>`;
+  } else if (item.kind === 'file') {
+    inner += `<div class="thumb file">📄</div><div class="meta">${item.name} · ${item.meta}</div>`;
+  } else {
+    inner += `<div class="body">${item.body}</div>`;
+    inner += `<div class="actions avail"><span>纯文本</span><span>✂︎ 分词</span></div>`;
+  }
+  el.innerHTML = inner;
+  strip.appendChild(el);
+  return el;
+});
+
+/* ============ 状态 ============ */
+const state = {
+  amp: 1.08, ampSel: 1.0, radius: 220, curve: 'cos', tau: 80,
+  waveOn: true, hoverSel: true, reduceMotion: false,
+};
+let selected = -1;
+let pointer = { x: 0, y: 0, inside: false };
+let scrolling = false, scrollIdleTimer = 0;
+let gain = 0;                       // 全局波浪权重,进出滚动区时淡入淡出
+const scales = ITEMS.map(() => 1);  // 每卡当前缩放(逐帧趋近目标)
+
+function select(i) {
+  if (i === selected) return;
+  if (selected >= 0) cards[selected].classList.remove('selected');
+  selected = i;
+  if (selected >= 0) cards[selected].classList.add('selected');
+}
+select(2);
+
+/* 命中测试用布局盒(offsetLeft/offsetWidth 不含 transform),波浪放大不改变选中判定 */
+function cardIndexAt(clientX, clientY) {
+  const stripRect = strip.getBoundingClientRect();
+  const px = clientX - stripRect.left;
+  const py = clientY - stripRect.top;
+  for (let i = 0; i < cards.length; i++) {
+    const el = cards[i];
+    if (px >= el.offsetLeft && px <= el.offsetLeft + el.offsetWidth &&
+        py >= el.offsetTop && py <= el.offsetTop + el.offsetHeight) return i;
+  }
+  return -1;
+}
+
+/* ============ 交互:悬停选中(滚动中防抖)、滚轮横滚、键盘 ============ */
+scroller.addEventListener('pointermove', (e) => {
+  pointer.x = e.clientX; pointer.y = e.clientY; pointer.inside = true;
+  if (state.hoverSel && !scrolling) {
+    const hit = cardIndexAt(e.clientX, e.clientY);
+    if (hit >= 0) select(hit);
+  }
+});
+scroller.addEventListener('pointerleave', () => { pointer.inside = false; });
+scroller.addEventListener('click', (e) => {
+  const hit = cardIndexAt(e.clientX, e.clientY);
+  if (hit >= 0) select(hit);
+});
+
+scroller.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  scroller.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  scrolling = true;
+  clearTimeout(scrollIdleTimer);
+  scrollIdleTimer = setTimeout(() => {
+    scrolling = false;
+    // 停下补跟手:选中对齐光标下的卡(与正式版 scrollPhaseChanged 行为一致)
+    if (state.hoverSel && pointer.inside) {
+      const hit = cardIndexAt(pointer.x, pointer.y);
+      if (hit >= 0) select(hit);
+    }
+  }, 140);
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const n = cards.length;
+  const next = e.key === 'ArrowLeft' ? (selected - 1 + n) % n : (selected + 1) % n;
+  select(next);
+  cards[next].scrollIntoView({ inline: 'center', block: 'nearest' });
+});
+
+/* ============ 波浪引擎:纯 transform,逐帧指数平滑 ============ */
+const FALLOFF = {
+  cos:   (t) => 0.5 + 0.5 * Math.cos(Math.PI * t),  // t∈[0,1]
+  gauss: (t) => Math.exp(-4.5 * t * t),
+  tri:   (t) => 1 - t,
+};
+
+let lastTs = performance.now();
+let frames = 0, fpsWindowStart = lastTs, fps = 0;
+const statusEl = document.getElementById('status');
+
+function tick(ts) {
+  const dt = Math.min(64, ts - lastTs);
+  lastTs = ts;
+
+  // 全局权重淡入淡出(~90ms),光标进出滚动区时波浪整体浮现/退场
+  const gTarget = (pointer.inside && state.waveOn && !state.reduceMotion) ? 1 : 0;
+  gain += (gTarget - gain) * (1 - Math.exp(-dt / 90));
+
+  const falloff = FALLOFF[state.curve];
+  // 平滑系数:τ=0 直接到位
+  const blend = state.tau === 0 ? 1 : 1 - Math.exp(-dt / state.tau);
+  let peak = 1;
+
+  for (let i = 0; i < cards.length; i++) {
+    const el = cards[i];
+    let target = 1;
+    if (gain > 0.001) {
+      // 底部中心锚点缩放不移水平中心,transformed rect 的中心即布局中心
+      const r = el.getBoundingClientRect();
+      const d = Math.abs(pointer.x - (r.left + r.width / 2));
+      const t = Math.min(d / state.radius, 1);
+      const maxS = i === selected ? state.ampSel : state.amp;
+      target = 1 + (maxS - 1) * falloff(t) * gain;
+    }
+    const s = scales[i] + (target - scales[i]) * blend;
+    scales[i] = s;
+    el.style.transform = Math.abs(s - 1) < 0.0005 ? '' : `scale(${s})`;
+    if (s > peak) peak = s;
+  }
+
+  frames++;
+  if (ts - fpsWindowStart >= 500) {
+    fps = Math.round(frames * 1000 / (ts - fpsWindowStart));
+    frames = 0; fpsWindowStart = ts;
+    statusEl.textContent =
+      `${fps} fps · 峰值 ×${peak.toFixed(3)}${scrolling ? ' · 滚动中' : ''}`;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ============ 控件绑定 ============ */
+const $ = (id) => document.getElementById(id);
+
+const PRESETS = [
+  { name: '克制',   amp: 1.05, ampSel: 1.0,  radius: 180, curve: 'cos', tau: 90 },
+  { name: '推荐',   amp: 1.08, ampSel: 1.0,  radius: 220, curve: 'cos', tau: 80 },
+  { name: '演示上限', amp: 1.12, ampSel: 1.08, radius: 280, curve: 'cos', tau: 70 },
+];
+
+function syncControls() {
+  $('amp').value = state.amp;         $('ampOut').textContent = `×${state.amp.toFixed(3)}`;
+  $('ampSel').value = state.ampSel;   $('ampSelOut').textContent = `×${state.ampSel.toFixed(3)}`;
+  $('radius').value = state.radius;   $('radiusOut').textContent = `${state.radius}px`;
+  $('tau').value = state.tau;         $('tauOut').textContent = `${state.tau}ms`;
+  $('curve').value = state.curve;
+  document.querySelectorAll('#presets button').forEach((b) => {
+    const p = PRESETS[+b.dataset.i];
+    b.classList.toggle('active',
+      p.amp === state.amp && p.ampSel === state.ampSel &&
+      p.radius === state.radius && p.curve === state.curve && p.tau === state.tau);
+  });
+}
+
+const presetsBox = $('presets');
+PRESETS.forEach((p, i) => {
+  const b = document.createElement('button');
+  b.textContent = p.name;
+  b.dataset.i = i;
+  b.addEventListener('click', () => { Object.assign(state, p); syncControls(); });
+  presetsBox.appendChild(b);
+});
+
+for (const [id, key, parse] of [
+  ['amp', 'amp', parseFloat], ['ampSel', 'ampSel', parseFloat],
+  ['radius', 'radius', parseInt], ['tau', 'tau', parseInt],
+]) {
+  $(id).addEventListener('input', (e) => { state[key] = parse(e.target.value); syncControls(); });
+}
+$('curve').addEventListener('change', (e) => { state.curve = e.target.value; syncControls(); });
+for (const [id, key] of [['waveOn', 'waveOn'], ['hoverSel', 'hoverSel'], ['reduceMotion', 'reduceMotion']]) {
+  $(id).addEventListener('change', (e) => { state[key] = e.target.checked; });
+}
+$('showClip').addEventListener('change', (e) => scroller.classList.toggle('show-clip', e.target.checked));
+syncControls();
+
+/* ============ 杂项:主题、壁纸杂物 ============ */
+if (matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
+$('themeBtn').addEventListener('click', () => document.documentElement.classList.toggle('dark'));
+
+const decor = $('decor');
+const SNIPPETS = ['~/Code/ChopClip — zsh', 'Liquid Glass Design Review.key', '⌥V 唤出 · ⏎ 粘贴',
+  'scroll @ 120Hz', 'RSS 28.4 MB', 'os_signpost(.begin, "summon")'];
+SNIPPETS.forEach((t, i) => {
+  const s = document.createElement('span');
+  s.className = 'txt';
+  s.textContent = t;
+  s.style.left = `${6 + (i * 17) % 78}%`;
+  s.style.top = `${8 + (i * 29) % 72}%`;
+  decor.appendChild(s);
+});
+[[8, 58, 200, 120], [70, 12, 240, 150], [40, 6, 170, 90]].forEach(([l, t, w, h]) => {
+  const d = document.createElement('div');
+  d.className = 'win';
+  d.style.cssText = `left:${l}%;top:${t}%;width:${w}px;height:${h}px`;
+  decor.appendChild(d);
+});
+</script>
+</body>
+</html>
