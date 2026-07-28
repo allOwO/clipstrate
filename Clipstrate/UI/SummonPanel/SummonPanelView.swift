@@ -67,8 +67,9 @@ struct SummonPanelView: View {
                                     )
                                     // 波浪放大（「完整特效」）：纯 visualEffect 变换，不参与
                                     // 布局与命中，选中卡不参与；挂在槽位 frame 之内、卡片
-                                    // 视觉组合之外，缩放的是整张玻璃卡。
-                                    .waveMagnify(model.wave, excluded: index == model.selectedIndex)
+                                    // 视觉组合之外，缩放的是整张玻璃卡。指针在条内按光标算,
+                                    // 不在时凸形按与选中卡的档位距离跟着键盘走。
+                                    .waveMagnify(model.wave, indexDistance: index - model.selectedIndex)
                                     // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                     // 不改变行高、不引起纵向重排或向下过冲。
                                     .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)

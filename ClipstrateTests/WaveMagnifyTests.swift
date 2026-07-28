@@ -61,6 +61,50 @@ final class WaveMagnifyTests: XCTestCase {
         XCTAssertLessThan(scale3, 1.02, "±3 应基本归位，凸形不摊平")
     }
 
+    // MARK: - 键盘凸（四次拍板：指针优先，不在条内时按档位距离跟键盘）
+
+    func testKeyboardBumpMatchesPointerBumpGeometry() {
+        XCTAssertEqual(WaveMagnify.keyboardScale(indexDistance: 0), 1, "选中卡不参与")
+        // 与「光标停在选中卡中心」时按布局距离算出的邻卡缩放一致（两种驱动同源）。
+        let neighbor1 = DS.Metrics.cardSelected.width / 2 + DS.Metrics.cardSpacing
+            + DS.Metrics.cardUnselected.width / 2
+        let pitch = DS.Metrics.cardUnselected.width + DS.Metrics.cardSpacing
+        for k in 1...4 {
+            XCTAssertEqual(
+                WaveMagnify.keyboardScale(indexDistance: k),
+                WaveMagnify.scale(distance: neighbor1 + pitch * CGFloat(k - 1), gain: 1),
+                accuracy: 1e-9,
+                "档位 \(k) 与指针几何不一致"
+            )
+        }
+        XCTAssertGreaterThan(WaveMagnify.keyboardScale(indexDistance: 1), 1.15)
+        XCTAssertGreaterThan(WaveMagnify.keyboardScale(indexDistance: 2), 1.05)
+        XCTAssertLessThan(WaveMagnify.keyboardScale(indexDistance: 3), 1.02)
+    }
+
+    /// 「完整特效」是配置项：关掉后唤出面板，指针波浪与键盘凸必须一并停用，
+    /// 行为退回无特效原样（键盘凸走 wave.isEnabled 同一道总闸）。
+    func testFullEffectsOffDisablesWholeWaveAtPresentation() {
+        Settings.registerDefaults()
+        let store = UserDefaults.standard
+        let original = store.object(forKey: SettingsKey.fullEffects)
+        defer {
+            if let original {
+                store.set(original, forKey: SettingsKey.fullEffects)
+            } else {
+                store.removeObject(forKey: SettingsKey.fullEffects)
+            }
+        }
+        store.set(false, forKey: SettingsKey.fullEffects)
+
+        let model = SummonPanelModel(historyStore: nil, initialItems: [])
+        model.beginPresentation()
+        XCTAssertFalse(model.wave.isEnabled, "设置关闭时波浪总闸必须关")
+        model.wave.pointerMoved(to: 300)
+        XCTAssertEqual(model.wave.gain, 0, "总闸关闭时指针也不得唤起波浪")
+        model.endPresentation()
+    }
+
     // MARK: - 状态机
 
     func testDisabledStateIgnoresPointer() {
