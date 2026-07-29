@@ -121,7 +121,7 @@ final class AutomaticBackupCoordinatorTests: XCTestCase {
         await coordinator.cancel()
     }
 
-    func testAutomaticHistoryBackupRunsAtMostOncePerDay() async throws {
+    func testAutomaticHistoryBackupRespectsFullInterval() async throws {
         let defaults = UserDefaults.standard
         let saved = snapshotDefaults(defaults)
         defer { restoreDefaults(saved, in: defaults) }
@@ -132,14 +132,13 @@ final class AutomaticBackupCoordinatorTests: XCTestCase {
         defaults.set(0, forKey: SettingsKey.backupLastFullUploadAt)
         defaults.set("", forKey: SettingsKey.backupLastFullSignature)
 
-        let fixture = try makeFixture("daily")
+        let fixture = try makeFixture("interval")
         defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let date = Date(timeIntervalSince1970: 1_800_000_000)
         let coordinator = AutomaticBackupCoordinator(
             backupService: fixture.service,
             transport: fixture.transport,
             debounceDuration: .milliseconds(20),
-            now: { date }
+            fullBackupInterval: .milliseconds(500)
         )
 
         try await fixture.history.upsert(
@@ -149,6 +148,7 @@ final class AutomaticBackupCoordinatorTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(120))
         XCTAssertEqual(try fixture.transport.backups().count, 1)
 
+        // 间隔未满：新历史变化顺延，不立即产生第二份全量。
         for file in try fixture.transport.backups() {
             try FileManager.default.removeItem(at: file.url)
         }
@@ -158,6 +158,10 @@ final class AutomaticBackupCoordinatorTests: XCTestCase {
         await coordinator.schedule(.history)
         try await Task.sleep(for: .milliseconds(120))
         XCTAssertTrue(try fixture.transport.backups().isEmpty)
+
+        // 间隔期满后无需新的变化事件，顺延的全量自动补传。
+        try await Task.sleep(for: .milliseconds(700))
+        XCTAssertEqual(try fixture.transport.backups().count, 1)
         await coordinator.cancel()
     }
 

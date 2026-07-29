@@ -1,26 +1,37 @@
 import Foundation
 
+/// 自动备份排队状态快照，供设置页状态行展示（01 §7.2）。
+struct AutomaticBackupQueueStatus: Sendable, Equatable {
+    let nextFireAt: Date?
+    let hasPendingChanges: Bool
+
+    static let idle = AutomaticBackupQueueStatus(nextFireAt: nil, hasPendingChanges: false)
+}
+
 /// 事件驱动的自动备份调度器：无轮询。只有捕获/设置/忽略名单发生变化时，
-/// 才创建一个可取消的延迟任务；同日已有全量备份时只保留一个跨日单次任务。
-/// 触发点只提前不推后（首个变化起最多等一个 debounce，持续复制不会无限顺延）；
-/// iCloud 不可用或写入失败时保留待办、按 retryDuration 重试。
+/// 才创建一个可取消的延迟任务；含历史库的全量包距上次全量不足 fullBackupInterval
+/// 时顺延到间隔期满。触发点只提前不推后（首个变化起最多等一个 debounce，
+/// 持续复制不会无限顺延）；iCloud 不可用或写入失败时保留待办、按 retryDuration 重试。
 actor AutomaticBackupCoordinator {
     private let backupService: BackupService
     private let transport: any BackupTransport
     private let debounceDuration: Duration
     private let retryDuration: Duration
+    private let fullBackupInterval: Duration
     private let calendar: Calendar
     private let now: @Sendable () -> Date
 
     private var pendingChanges: Set<BackupChange> = []
     private var scheduledTask: Task<Void, Never>?
     private var scheduledFireAt: Date?
+    private var onQueueStatusChange: (@Sendable (AutomaticBackupQueueStatus) -> Void)?
 
     init(
         backupService: BackupService,
         transport: any BackupTransport,
         debounceDuration: Duration = .seconds(300),
         retryDuration: Duration = .seconds(600),
+        fullBackupInterval: Duration = .seconds(600),
         calendar: Calendar = .current,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
@@ -28,17 +39,21 @@ actor AutomaticBackupCoordinator {
         self.transport = transport
         self.debounceDuration = debounceDuration
         self.retryDuration = retryDuration
+        self.fullBackupInterval = fullBackupInterval
         self.calendar = calendar
         self.now = now
     }
 
+    /// 注册排队状态回调；注册时立即回放一次当前状态。
+    func setQueueStatusHandler(
+        _ handler: @escaping @Sendable (AutomaticBackupQueueStatus) -> Void
+    ) {
+        onQueueStatusChange = handler
+        notifyQueueStatus()
+    }
+
     func schedule(_ change: BackupChange) {
-        guard Settings.backupAutoICloud else {
-            cancel()
-            return
-        }
-        pendingChanges.insert(change)
-        schedule(after: debounceDuration)
+        schedule(Set([change]))
     }
 
     func schedule(_ changes: Set<BackupChange>) {
@@ -48,6 +63,7 @@ actor AutomaticBackupCoordinator {
         }
         pendingChanges.formUnion(changes)
         schedule(after: debounceDuration)
+        notifyQueueStatus()
     }
 
     func cancel() {
@@ -55,6 +71,7 @@ actor AutomaticBackupCoordinator {
         scheduledTask = nil
         scheduledFireAt = nil
         pendingChanges.removeAll()
+        notifyQueueStatus()
     }
 
     @discardableResult
@@ -88,6 +105,7 @@ actor AutomaticBackupCoordinator {
     }
 
     private func performPendingBackup() async {
+        defer { notifyQueueStatus() }
         scheduledTask = nil
         scheduledFireAt = nil
         guard Settings.backupAutoICloud else { return }
@@ -101,13 +119,13 @@ actor AutomaticBackupCoordinator {
         pendingChanges.removeAll()
 
         let historyRequested = changes.contains(.history) && Settings.backupIncludeHistory
-        let canWriteFull = historyRequested && !calendar.isDate(
-            Date(timeIntervalSince1970: Settings.backupLastFullUploadAt),
-            inSameDayAs: date
-        )
+        let nextFullAt = Date(timeIntervalSince1970: Settings.backupLastFullUploadAt)
+            .addingTimeInterval(fullBackupInterval.timeInterval)
+        let canWriteFull = historyRequested && date >= nextFullAt
         if historyRequested && !canWriteFull {
+            // 距上次全量不足间隔：历史留在待办，间隔期满自动补传。
             pendingChanges.insert(.history)
-            scheduleAtStartOfNextDay(after: date)
+            schedule(after: .seconds(max(0.001, nextFullAt.timeIntervalSince(date))))
         }
 
         let selection = BackupSelection(
@@ -179,14 +197,11 @@ actor AutomaticBackupCoordinator {
         }
     }
 
-    private func scheduleAtStartOfNextDay(after date: Date) {
-        guard let nextDay = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: calendar.startOfDay(for: date)
-        ) else { return }
-        let delay = max(1, nextDay.timeIntervalSince(date))
-        schedule(after: .seconds(delay))
+    private func notifyQueueStatus() {
+        onQueueStatusChange?(AutomaticBackupQueueStatus(
+            nextFireAt: scheduledTask == nil ? nil : scheduledFireAt,
+            hasPendingChanges: !pendingChanges.isEmpty
+        ))
     }
 }
 

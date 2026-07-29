@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var retentionJanitor: RetentionJanitor?
     private var backupService: BackupService?
     private var automaticBackupCoordinator: AutomaticBackupCoordinator?
+    private var backupQueueStatus = AutomaticBackupQueueStatus.idle
     private var janitorTask: Task<Void, Never>?
     private var attentionWatchTask: Task<Void, Never>?
     private var onboardingController: OnboardingController?
@@ -162,6 +163,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 transport: cloudBackupTransport
             )
             automaticBackupCoordinator = coordinator
+            Task {
+                await coordinator.setQueueStatusHandler { [weak self] status in
+                    Task { @MainActor [weak self] in self?.backupQueueStatus = status }
+                }
+            }
             if Settings.backupAutoICloud {
                 Task {
                     await coordinator.schedule(Set([.settings, .ignoreList, .history]))
@@ -281,6 +287,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func currentBackupState() -> SettingsBackupState {
         guard cloudBackupTransport.isAvailable else { return .unavailable }
+        if Settings.backupAutoICloud, let fireAt = backupQueueStatus.nextFireAt {
+            let time = fireAt.formatted(date: .omitted, time: .shortened)
+            return .available(status: "有新变更，将于 \(time) 自动备份")
+        }
         if Settings.backupLastUploadAt > 0 { return .available(status: "已备份") }
         if Settings.backupAutoICloud { return .available(status: "待上传") }
         return .available(status: "可用")

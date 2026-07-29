@@ -63,7 +63,11 @@ struct SettingsView: View {
         }
         .frame(minWidth: 680, minHeight: 480)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onReceive(permissionPoll) { _ in refreshPermissions() }
+        .onReceive(permissionPoll) { _ in
+            refreshPermissions()
+            // 备份排队状态随时间推进（排定/触发/完成），窗口开着时跟着轮询刷新。
+            refreshBackupState()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshLoginItemStatus()
             refreshBackupState()
@@ -636,7 +640,8 @@ struct SettingsView: View {
     }
 
     private func refreshBackupState() {
-        observedBackupState = actions.backupState()
+        let state = actions.backupState()
+        if state != observedBackupState { observedBackupState = state }
     }
 
     private func updateScrollSpy() {
