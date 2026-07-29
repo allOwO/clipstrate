@@ -10,7 +10,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let model: SummonPanelModel
     private var localKeyMonitor: Any?
     private var globalClickMonitor: Any?
-    private var hideTask: Task<Void, Never>?
+    /// 淡出代际：被打断的旧淡出完成回调仍会按原时长触发，靠代际比对丢弃。
+    private var fadeOutGeneration = 0
     private var placementAnchor: CGRect?
     /// 唤出前的前台 App：面板为支持直接输入法会激活本 App、抢走对方焦点，
     /// 粘贴前需把它重新激活，合成的 ⌘V 才会落回用户原来的输入框。
@@ -62,8 +63,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show() {
         guard !isVisible else { return }
-        hideTask?.cancel()
-        hideTask = nil
+        cancelFadeOut()
         let signpost = Log.signposter.beginInterval("summon.show")
         defer { Log.signposter.endInterval("summon.show", signpost) }
 
@@ -89,11 +89,29 @@ final class PanelController: NSObject, NSWindowDelegate {
         removeMonitors()
         isVisible = false
         model.endPresentation()
-        hideTask?.cancel()
-        hideTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(DS.Anim.closeDuration))
-            guard !Task.isCancelled else { return }
-            self?.panel.orderOut(nil)
+        // 窗口级 alpha 淡出，orderOut 挂在完成回调上：
+        // 1) 定时 orderOut 与 SwiftUI 退场动画完成帧存在竞争，末帧残影会停一拍（收尾停顿）；
+        // 2) Liquid Glass 的背景采样不完全跟随 SwiftUI opacity，窗口 alpha 保证玻璃同步淡出。
+        fadeOutGeneration &+= 1
+        let generation = fadeOutGeneration
+        NSAnimationContext.runAnimationGroup({ [panel] context in
+            context.duration = DS.Anim.closeDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, generation == self.fadeOutGeneration, !self.isVisible else { return }
+                self.panel.orderOut(nil)
+                self.panel.alphaValue = 1
+            }
+        })
+    }
+
+    /// 打断进行中的淡出：用零时长动画组顶掉在飞的 alpha 动画（直接赋值会被后续动画帧覆盖）。
+    private func cancelFadeOut() {
+        NSAnimationContext.runAnimationGroup { [panel] context in
+            context.duration = 0
+            panel.animator().alphaValue = 1
         }
     }
 
@@ -104,9 +122,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         removeMonitors()
         isVisible = false
         model.endPresentation()
-        hideTask?.cancel()
-        hideTask = nil
         panel.orderOut(nil)
+        cancelFadeOut()
         // 把焦点还给唤出前的 App，随后合成的 ⌘V 才落回它的输入框。
         previousApp?.activate()
     }
@@ -128,8 +145,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// App 终止时显式拆除监听器与异步任务（零泄露清单）。
     func tearDown() {
         removeMonitors()
-        hideTask?.cancel()
-        hideTask = nil
         // 波浪 signpost 区间收尾：退出时面板若可见且指针在条内，gain>0 的区间要闭合。
         model.wave.pointerExited()
         model.tearDown()
