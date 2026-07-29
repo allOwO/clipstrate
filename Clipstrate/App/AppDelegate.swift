@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var backupService: BackupService?
     private var automaticBackupCoordinator: AutomaticBackupCoordinator?
     private var janitorTask: Task<Void, Never>?
+    private var attentionWatchTask: Task<Void, Never>?
     private var onboardingController: OnboardingController?
     private let hotkeyCenter = HotkeyCenter()
     private let loginItemManager: any LoginItemManaging = SystemLoginItemManager()
@@ -101,7 +102,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 菜单栏 Popover：左键图标弹出，右键弹菜单（设置…/关于/退出）。
         let popover = PopoverController(historyStore: historyStore, blobStore: blobStore)
         popoverController = popover
-        statusItemController?.onLeftClick = { [weak popover] button in popover?.toggle(relativeTo: button) }
+        statusItemController?.onLeftClick = { [weak self, weak popover] button in
+            // 顺带重算黄点：覆盖启动后授权被撤销、watch 循环已退出的情况。
+            self?.refreshAttention()
+            popover?.toggle(relativeTo: button)
+        }
         statusItemController?.onSettings = { [weak self] in self?.openSettings() }
         statusItemController?.onAbout = { [weak self] in self?.openAbout() }
         popover.onSettings = { [weak self] in self?.openSettings() }
@@ -183,6 +188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         janitorTask?.cancel()
         janitorTask = nil
+        attentionWatchTask?.cancel()
+        attentionWatchTask = nil
         let coordinator = automaticBackupCoordinator
         Task { await coordinator?.cancel() }
         panelController?.tearDown()
@@ -211,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 打开通铺式设置窗口（单例复用）。
     private func openSettings() {
+        refreshAttention()
         refreshLatestCloudBackupDate()
         if settingsWindowController == nil {
             let actions = SettingsActions(
@@ -503,9 +511,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.show()
     }
 
-    /// 权限齐全则去掉黄点，缺失则标黄点（01 §8）。
+    /// 权限齐全则去掉黄点，缺失则标黄点（01 §8）。系统对这两项授权都没有变更通知，
+    /// 缺失期间轻量轮询兜底，用户在系统设置里授权后黄点数秒内自动消失，无需重启。
     private func refreshAttention() {
         let ok = PrivacyGate.isPasteboardAllowed && AXPermission.isTrusted
         statusItemController?.setNeedsAttention(!ok)
+        if ok {
+            attentionWatchTask?.cancel()
+            attentionWatchTask = nil
+        } else if attentionWatchTask == nil {
+            attentionWatchTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    guard !Task.isCancelled, let self else { return }
+                    if PrivacyGate.isPasteboardAllowed && AXPermission.isTrusted {
+                        self.statusItemController?.setNeedsAttention(false)
+                        self.attentionWatchTask = nil
+                        return
+                    }
+                }
+            }
+        }
     }
 }
