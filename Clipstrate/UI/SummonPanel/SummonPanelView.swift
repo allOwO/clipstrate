@@ -88,8 +88,9 @@ struct SummonPanelView: View {
                             height: DS.Metrics.cardSelected.height,
                             alignment: .bottomLeading
                         )
-                        // 四周等量留白：卡片玻璃阴影在留白内羽化完，ScrollView 的裁剪
-                        // 边界落在透明区——既不裁成硬线，也不向下铺出（下探）。
+                        // 四周等量留白：把卡片推离视口边界，边上那张卡的阴影不至于一上来
+                        // 就贴着裁剪线。留白本身容不下完整阴影（向下要 60pt），纵向靠下面的
+                        // 横向裁剪放行。
                         .padding(SummonPanelLayout.shadowPadding)
                         // 命中兜底：面板是无边框透明窗口，卡间缝隙 / 未选中卡上方留白
                         // 原本 hitTest 为 nil（点击穿透区）——光标落在缝里滚动手势会被
@@ -99,6 +100,17 @@ struct SummonPanelView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
+                // 只在水平方向裁剪。ScrollView 默认按视口矩形两轴齐裁，而玻璃阴影向下铺到
+                // 卡底以下约 60pt（见 SummonPanelLayout.shadowBleed），于是在卡底下方
+                // shadowPadding 处被切成一条贯穿整条卡片条的横线——白底下尤其扎眼。
+                // 放开纵向：阴影铺进提示胶囊那一带自然淡出（胶囊在 VStack 里后画、盖在阴影上，
+                // 自身不受影响），剩余部分由透明窗口边界收掉。
+                // 保留横向：滚出视口的卡片仍旧不参与合成、不会横向铺到窗口边上。
+                .scrollClipDisabled()
+                .clipShape(HorizontalOnlyClip(verticalBleed: SummonPanelLayout.shadowBleed))
+                // 裁剪形状纵向外扩，命中区域别跟着扩：交互范围钉回视口矩形，
+                // 免得卡片条上下的空白（提示胶囊那一带）把点击吞掉。
+                .contentShape(Rectangle())
                 // 波浪坐标系挂在 ScrollView 容器（不随内容滚动）：指针与卡片 frame 同源，
                 // 滚动中指针不动、卡片 frame 逐帧变化，波浪自动跟随流过的卡。
                 .coordinateSpace(name: WaveMagnify.coordinateSpaceName)
@@ -114,9 +126,6 @@ struct SummonPanelView: View {
                 .onScrollPhaseChange { _, newPhase in
                     model.scrollPhaseChanged(isScrolling: newPhase != .idle)
                 }
-                // 不再 scrollClipDisabled：上面的 shadowPadding 已经把裁剪边界推到透明留白里，
-                // 阴影在留白内羽化完，裁剪不会切出硬线；保留裁剪则让滚出视口的卡片不再参与合成，
-                // 也不会画到 ScrollView 之外（原先会铺到提示胶囊/窗口边上）。
                 .onChange(of: model.selectedIndex) { _, index in
                     // 悬停触发的选中只放大不滚动；键盘导航才滚动定位（瞬时，无滚动动画）。
                     guard model.shouldAutoScrollToSelection(),
@@ -174,6 +183,17 @@ struct SummonPanelView: View {
         .glassSurface(cornerRadius: 999)
         .contentShape(Capsule())
         .onTapGesture { model.beginIMEInput() }
+    }
+}
+
+/// 只裁水平方向的裁剪形状：纵向按 `verticalBleed` 外扩，把卡片玻璃阴影放出视口。
+/// 配 `.scrollClipDisabled()` 用——单靠 scrollClipDisabled 会连横向一起放开，
+/// 滚出视口的卡片就画到窗口边上去了。
+struct HorizontalOnlyClip: Shape {
+    let verticalBleed: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: 0, dy: -verticalBleed))
     }
 }
 

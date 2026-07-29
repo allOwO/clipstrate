@@ -14,6 +14,11 @@ enum SummonPanelLayout {
     static let searchResultLimit = 300
     static let screenInset: CGFloat = 16
     static let shadowPadding: CGFloat = 16
+    /// 卡片玻璃阴影允许铺出卡片条视口的纵向距离。Liquid Glass 的投影向下重偏
+    /// （原型变体 C：未选中 `0 14px 36px` 约到卡底以下 32pt，选中 `0 28px 64px` 约 60pt），
+    /// 远超 shadowPadding，靠加大留白是补不上的——只能让它铺出视口自然淡出（见
+    /// SummonPanelView 的横向裁剪）。取 72：够容下 60pt 的羽化，多出的部分由窗口边界收掉。
+    static let shadowBleed: CGFloat = 72
     static let verticalPadding: CGFloat = 8
     static let minimumPanelWidth: CGFloat = 720
     static let normalPanelHeight: CGFloat = 292

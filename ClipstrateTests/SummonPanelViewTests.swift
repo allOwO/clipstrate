@@ -25,6 +25,22 @@ final class SummonPanelViewTests: XCTestCase {
         XCTAssertEqual(overlay.height, SummonPanelLayout.overlayPanelHeight)
     }
 
+    func testCardShadowClipOpensVerticallyOnly() {
+        // 玻璃阴影向下铺到卡底以下约 60pt（原型变体 C 选中卡 `0 28px 64px`），
+        // 放行距离必须盖得住，否则又在视口边界切出横线。
+        XCTAssertGreaterThanOrEqual(SummonPanelLayout.shadowBleed, 60)
+
+        // 裁剪只放纵向：横向仍严格贴视口，滚出去的卡片不会铺到窗口边上。
+        let viewport = CGRect(x: 0, y: 0, width: 720, height: 228)
+        let clipped = HorizontalOnlyClip(verticalBleed: SummonPanelLayout.shadowBleed)
+            .path(in: viewport)
+            .boundingRect
+        XCTAssertEqual(clipped.minX, viewport.minX)
+        XCTAssertEqual(clipped.maxX, viewport.maxX)
+        XCTAssertEqual(clipped.minY, viewport.minY - SummonPanelLayout.shadowBleed)
+        XCTAssertEqual(clipped.maxY, viewport.maxY + SummonPanelLayout.shadowBleed)
+    }
+
     func testCardPresentationLabelsAndSourceOmission() {
         let rich = ClipItem(
             kind: .text,
