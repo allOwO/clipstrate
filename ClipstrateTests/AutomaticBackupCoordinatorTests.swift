@@ -52,6 +52,75 @@ final class AutomaticBackupCoordinatorTests: XCTestCase {
         await coordinator.cancel()
     }
 
+    func testRepeatedChangesDoNotPostponeScheduledBackup() async throws {
+        let defaults = UserDefaults.standard
+        let saved = snapshotDefaults(defaults)
+        defer { restoreDefaults(saved, in: defaults) }
+        defaults.set(true, forKey: SettingsKey.backupAutoICloud)
+        defaults.set(true, forKey: SettingsKey.backupIncludeSettings)
+        defaults.set(false, forKey: SettingsKey.backupIncludeIgnoreList)
+        defaults.set(false, forKey: SettingsKey.backupIncludeHistory)
+        defaults.set("", forKey: SettingsKey.backupLastSmallSignature)
+
+        let fixture = try makeFixture("no-postpone")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let coordinator = AutomaticBackupCoordinator(
+            backupService: fixture.service,
+            transport: fixture.transport,
+            debounceDuration: .milliseconds(400),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+
+        // 每 100ms 一次新变化，旧实现会不断重置计时、迟迟不备份；
+        // 新实现从首个变化起最多等一个 debounce。
+        await coordinator.schedule(.settings)
+        for _ in 0..<7 {
+            try await Task.sleep(for: .milliseconds(100))
+            await coordinator.schedule(.settings)
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(try fixture.transport.backups().count, 1)
+        await coordinator.cancel()
+    }
+
+    func testRetriesWhileCloudDriveUnavailable() async throws {
+        let defaults = UserDefaults.standard
+        let saved = snapshotDefaults(defaults)
+        defer { restoreDefaults(saved, in: defaults) }
+        defaults.set(true, forKey: SettingsKey.backupAutoICloud)
+        defaults.set(true, forKey: SettingsKey.backupIncludeSettings)
+        defaults.set(false, forKey: SettingsKey.backupIncludeIgnoreList)
+        defaults.set(false, forKey: SettingsKey.backupIncludeHistory)
+        defaults.set("", forKey: SettingsKey.backupLastSmallSignature)
+
+        let fixture = try makeFixture("retry")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let coordinator = AutomaticBackupCoordinator(
+            backupService: fixture.service,
+            transport: fixture.transport,
+            debounceDuration: .milliseconds(20),
+            retryDuration: .milliseconds(60),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+
+        // 模拟 iCloud Drive 掉线：首个触发点落空，待办保留。
+        try FileManager.default.removeItem(at: fixture.transport.cloudDocsRoot)
+        await coordinator.schedule(.settings)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: fixture.transport.directoryURL.path)
+        )
+
+        // 恢复挂载点后，无需新的变化事件，重试自行完成备份。
+        try FileManager.default.createDirectory(
+            at: fixture.transport.cloudDocsRoot,
+            withIntermediateDirectories: true
+        )
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(try fixture.transport.backups().count, 1)
+        await coordinator.cancel()
+    }
+
     func testAutomaticHistoryBackupRunsAtMostOncePerDay() async throws {
         let defaults = UserDefaults.standard
         let saved = snapshotDefaults(defaults)

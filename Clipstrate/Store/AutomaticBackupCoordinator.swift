@@ -2,26 +2,32 @@ import Foundation
 
 /// 事件驱动的自动备份调度器：无轮询。只有捕获/设置/忽略名单发生变化时，
 /// 才创建一个可取消的延迟任务；同日已有全量备份时只保留一个跨日单次任务。
+/// 触发点只提前不推后（首个变化起最多等一个 debounce，持续复制不会无限顺延）；
+/// iCloud 不可用或写入失败时保留待办、按 retryDuration 重试。
 actor AutomaticBackupCoordinator {
     private let backupService: BackupService
     private let transport: any BackupTransport
     private let debounceDuration: Duration
+    private let retryDuration: Duration
     private let calendar: Calendar
     private let now: @Sendable () -> Date
 
     private var pendingChanges: Set<BackupChange> = []
     private var scheduledTask: Task<Void, Never>?
+    private var scheduledFireAt: Date?
 
     init(
         backupService: BackupService,
         transport: any BackupTransport,
         debounceDuration: Duration = .seconds(300),
+        retryDuration: Duration = .seconds(600),
         calendar: Calendar = .current,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.backupService = backupService
         self.transport = transport
         self.debounceDuration = debounceDuration
+        self.retryDuration = retryDuration
         self.calendar = calendar
         self.now = now
     }
@@ -47,6 +53,7 @@ actor AutomaticBackupCoordinator {
     func cancel() {
         scheduledTask?.cancel()
         scheduledTask = nil
+        scheduledFireAt = nil
         pendingChanges.removeAll()
     }
 
@@ -63,8 +70,12 @@ actor AutomaticBackupCoordinator {
         return destination
     }
 
+    /// 只把触发点提前、不推后：已排定更早的任务时新变化只并入待办。
     private func schedule(after duration: Duration) {
+        let target = now().addingTimeInterval(duration.timeInterval)
+        if scheduledTask != nil, let fireAt = scheduledFireAt, fireAt <= target { return }
         scheduledTask?.cancel()
+        scheduledFireAt = target
         scheduledTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: duration)
@@ -77,7 +88,14 @@ actor AutomaticBackupCoordinator {
     }
 
     private func performPendingBackup() async {
-        guard Settings.backupAutoICloud, transport.isAvailable else { return }
+        scheduledTask = nil
+        scheduledFireAt = nil
+        guard Settings.backupAutoICloud else { return }
+        guard transport.isAvailable else {
+            // iCloud Drive 暂不可用：待办保留，稍后重试而不是等下一次变化。
+            schedule(after: retryDuration)
+            return
+        }
         let date = now()
         let changes = pendingChanges
         pendingChanges.removeAll()
@@ -115,6 +133,7 @@ actor AutomaticBackupCoordinator {
             )
         } catch {
             pendingChanges.formUnion(changes)
+            schedule(after: retryDuration)
             Log.store.error(
                 "自动 iCloud 备份失败：\(String(describing: error), privacy: .public)"
             )
@@ -168,5 +187,11 @@ actor AutomaticBackupCoordinator {
         ) else { return }
         let delay = max(1, nextDay.timeIntervalSince(date))
         schedule(after: .seconds(delay))
+    }
+}
+
+private extension Duration {
+    var timeInterval: TimeInterval {
+        Double(components.seconds) + Double(components.attoseconds) / 1e18
     }
 }
