@@ -35,6 +35,8 @@ struct SettingsView: View {
     @State private var axTrusted = AXPermission.isTrusted
     @State private var observedBackupState = SettingsBackupState.unavailable
     private let permissionPoll = Timer.publish(every: 0.8, on: .main, in: .common).autoconnect()
+    /// 备份排队状态随时间推进（排定/触发/完成），但分钟级展示不需要亚秒刷新。
+    private let backupPoll = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     /// 窗口激活态：失焦时把选中高亮转为系统式灰色（原生窗口非激活观感）。
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -63,11 +65,8 @@ struct SettingsView: View {
         }
         .frame(minWidth: 680, minHeight: 480)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onReceive(permissionPoll) { _ in
-            refreshPermissions()
-            // 备份排队状态随时间推进（排定/触发/完成），窗口开着时跟着轮询刷新。
-            refreshBackupState()
-        }
+        .onReceive(permissionPoll) { _ in refreshPermissions() }
+        .onReceive(backupPoll) { _ in refreshBackupState() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshLoginItemStatus()
             refreshBackupState()
