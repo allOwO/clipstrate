@@ -186,8 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startJanitor(_ janitor: RetentionJanitor) {
         janitorTask = Task {
             while !Task.isCancelled {
-                do { try await janitor.runOnce() }
-                catch { Log.store.error("retention 清理失败：\(String(describing: error), privacy: .public)") }
+                do {
+                    try await janitor.runOnce()
+                    // 清理删掉条目同样让面板快照过期（捕获之外的另一条过期路径）。
+                    await MainActor.run { [weak self] in self?.panelController?.refreshSnapshotIfHidden() }
+                } catch { Log.store.error("retention 清理失败：\(String(describing: error), privacy: .public)") }
                 try? await Task.sleep(for: .seconds(3600))
             }
         }
@@ -211,6 +214,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 堆栈开启时入栈（enqueue 内部判 enabled）；文本条目再做实体检测弹 EntityHUD（01 §4.1 B / §10）。
     private func handleCaptured(_ item: ClipItem) {
         Task { [clipboardStack] in await clipboardStack.enqueue(item) }
+        // 面板隐藏时顺手刷新它的快照：否则这条新条目要等下次唤出、在面板已经显示出来
+        // 之后才补进去，表现为窗口改尺寸 + 新卡重放进场动画（长时间不用后尤其明显）。
+        panelController?.refreshSnapshotIfHidden()
         if Settings.backupAutoICloud, let coordinator = automaticBackupCoordinator {
             Task { await coordinator.schedule(.history) }
         }

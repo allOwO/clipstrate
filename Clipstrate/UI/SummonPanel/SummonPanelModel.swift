@@ -65,6 +65,18 @@ final class SummonPanelModel: ObservableObject {
         refresh()
     }
 
+    /// 隐藏期间保持快照新鲜。`show()` 是同步的，`beginPresentation()` 里的 refresh 是
+    /// Task，绝不可能在 orderFrontRegardless() 之前落地——所以只在唤出时刷新，等于
+    /// 「先按过期快照把面板显示出去，再在用户眼前修正」：条数变了窗口就改尺寸，
+    /// contentHash 变了新卡还会重放错开的进场 spring（冷库读盘 200–300ms 时尤其明显，
+    /// 复现与机制见 SummonPanelColdSummonDiagTests）。
+    /// 捕获新剪贴板 / 清理过期条目之后调用本方法，唤出时的 refresh 就退化成空操作。
+    /// 面板可见时不刷：那会让卡片在用户正看着的时候变动。
+    func refreshWhileHidden() {
+        guard !isPanelPresented else { return }
+        refresh()
+    }
+
     func beginPresentation() {
         selectedIndex = 0
         focus = .card
