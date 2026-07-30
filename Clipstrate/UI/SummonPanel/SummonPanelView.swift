@@ -297,6 +297,13 @@ private struct SummonCardView: View {
         isSelected ? DS.Metrics.cardSelected : DS.Metrics.cardUnselected
     }
 
+    /// 选中描边的透明度：未选中为 0（视图仍在，见 overlay 处注释）；
+    /// 动作层聚焦时淡下去，把强调让给动作胶囊自己的描边。
+    private var ringOpacity: Double {
+        guard isSelected else { return 0 }
+        return isActionLayer ? DS.Metrics.actionLayerRingOpacity : 1
+    }
+
     var body: some View {
         // 构造一次 ClipCardPresentation 就要 trim 字符串（图片卡还要过 ByteCountFormatter），
         // 而 header / content / 无障碍标签都要用它——按计算属性写会在一次 body 求值里重复构造。
@@ -318,12 +325,17 @@ private struct SummonCardView: View {
             cornerRadius: DS.Metrics.cardCornerRadius,
             interactive: true
         )
+        // 描边**恒定存在**、只动透明度——绝不要写成 `if isSelected { 描边 }`。
+        // 条件内容会走插入/移除过渡，而移除的语义是「把视图从布局里摘出去、按它最后一次
+        // 的几何继续画」：卡片这边 252×196 缩回 128×126、卡片条重排左移，那圈描边却留在
+        // 旧的选中态尺寸和旧位置上淡出 0.12s，于是比卡片大一圈、位置对不上，多出的 124pt
+        // 还探到下一张卡底下被压住。滚动中换卡 29ms 一次而淡出要 120ms，任一时刻有约 4 圈
+        // 这样的孤立描边在飞（2026-07-30 实测截图）。恒定存在则永远在布局里，严格跟着
+        // frame 动画走，只有 alpha 在变。
         .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous)
-                    .stroke(DS.Colors.selectionRing, lineWidth: DS.Metrics.selectionRingWidth)
-                    .opacity(isActionLayer ? DS.Metrics.actionLayerRingOpacity : 1)
-            }
+            RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous)
+                .stroke(DS.Colors.selectionRing, lineWidth: DS.Metrics.selectionRingWidth)
+                .opacity(ringOpacity)
         }
         // 不再叠显式 shadow：glassEffect 自带四周均匀的 Liquid Glass 投影。
         // 选中生长走缓出（零过冲，不会下探；固定槽位底对齐再加一道保险）：
@@ -625,10 +637,12 @@ private struct ActionCapsule: View {
         .buttonStyle(.plain)
         .background(isFocused ? DS.Colors.accent.opacity(0.16) : .clear, in: Capsule())
         .glassSurface(cornerRadius: 999, interactive: true)
+        // 同卡片描边：恒定存在、只动透明度，不用条件内容（见 SummonCardView 的 overlay 注释）。
+        // 胶囊尺寸不随聚焦变化，所以目前看不出错位，但机制一样，不留这个坑。
         .overlay {
-            if isFocused {
-                Capsule().stroke(DS.Colors.selectionRing, lineWidth: 2)
-            }
+            Capsule()
+                .stroke(DS.Colors.selectionRing, lineWidth: 2)
+                .opacity(isFocused ? 1 : 0)
         }
         .animation(.easeInOut(duration: DS.Anim.ringFadeDuration), value: isFocused)
     }
