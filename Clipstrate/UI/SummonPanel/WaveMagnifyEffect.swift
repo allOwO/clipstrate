@@ -128,6 +128,8 @@ struct WaveMagnifyModifier: ViewModifier {
     @ObservedObject var wave: WaveMagnifyState
     /// 本卡与选中卡的档位距离（非负）；0 = 选中卡，不参与波浪。
     let distanceFromSelection: Int
+    /// 滚动中：与卡片生长共用短曲线，两者时长必须一致（详见下方 .animation 注释）。
+    let isScrolling: Bool
 
     func body(content: Content) -> some View {
         // 闭包按值捕获快照；滚动中卡片 frame 逐帧变化会重跑闭包，指针不动波浪也跟着卡走。
@@ -154,12 +156,15 @@ struct WaveMagnifyModifier: ViewModifier {
             return view.scaleEffect(x: 1, y: 1 + delta, anchor: .bottom)
         }
         // 选中变更（档位距离变化）时，键盘凸的换挡和波浪交接与选中生长共用同一条
-        // 曲线（DS.Anim.cardGrow）——同一张卡的「尺寸生长/回缩」与「波浪隆起/放平」
-        // 必须同步，时长错位会互相打架。指针/滚动驱动的连续变化不经此键、不受影响。
+        // 曲线——同一张卡的「尺寸生长/回缩」与「波浪隆起/放平」必须同步，时长错位
+        // 会互相打架，所以两处一起按 isScrolling 切档，绝不能只改一边。
+        // 指针/滚动驱动的连续变化不经此键、不受影响。
         // 触发值钳制到 settledSteps：更远的卡缩放恒为 1，选中变更时不给它们起空转事务
         // （滚动中实时选中每秒切换多次，20 张实体化卡全体陪跑不是小数）。
         .animation(
-            MotionPolicy.prefersReducedMotion ? nil : DS.Anim.cardGrow,
+            MotionPolicy.prefersReducedMotion
+                ? nil
+                : (isScrolling ? DS.Anim.cardGrowScrolling : DS.Anim.cardGrow),
             value: min(distanceFromSelection, WaveMagnify.settledSteps)
         )
     }
@@ -167,7 +172,15 @@ struct WaveMagnifyModifier: ViewModifier {
 
 extension View {
     /// 波浪放大（「完整特效」）。挂在卡片视觉组合的最外层、槽位 frame 之内。
-    func waveMagnify(_ wave: WaveMagnifyState, distanceFromSelection: Int) -> some View {
-        modifier(WaveMagnifyModifier(wave: wave, distanceFromSelection: distanceFromSelection))
+    func waveMagnify(
+        _ wave: WaveMagnifyState,
+        distanceFromSelection: Int,
+        isScrolling: Bool
+    ) -> some View {
+        modifier(WaveMagnifyModifier(
+            wave: wave,
+            distanceFromSelection: distanceFromSelection,
+            isScrolling: isScrolling
+        ))
     }
 }

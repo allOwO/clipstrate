@@ -60,6 +60,7 @@ struct SummonPanelView: View {
                                         blobStore: model.blobStore,
                                         presentationEpoch: model.presentationEpoch,
                                         isPanelPresented: model.isPanelPresented,
+                                        isScrolling: model.isScrolling,
                                         onActivate: { model.activateCard(at: index) },
                                         onPlainText: { model.activateAction(0) },
                                         onChop: { model.activateAction(1) },
@@ -69,7 +70,11 @@ struct SummonPanelView: View {
                                     // 布局与命中，选中卡不参与；挂在槽位 frame 之内、卡片
                                     // 视觉组合之外，缩放的是整张玻璃卡。指针在条内按光标算,
                                     // 不在时凸形按与选中卡的档位距离跟着键盘走。
-                                    .waveMagnify(model.wave, distanceFromSelection: abs(index - model.selectedIndex))
+                                    .waveMagnify(
+                                        model.wave,
+                                        distanceFromSelection: abs(index - model.selectedIndex),
+                                        isScrolling: model.isScrolling
+                                    )
                                     // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                     // 不改变行高、不引起纵向重排或向下过冲。
                                     .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
@@ -279,6 +284,8 @@ private struct SummonCardView: View {
     let blobStore: BlobStore?
     let presentationEpoch: Int
     let isPanelPresented: Bool
+    /// 滚动中换卡频率远高于生长时长，生长曲线要切短档（DS.Anim.cardGrowScrolling）。
+    let isScrolling: Bool
     let onActivate: () -> Void
     let onPlainText: () -> Void
     let onChop: () -> Void
@@ -319,11 +326,15 @@ private struct SummonCardView: View {
             }
         }
         // 不再叠显式 shadow：glassEffect 自带四周均匀的 Liquid Glass 投影。
-        // 选中生长走 DS.Anim.cardGrow 缓出（零过冲，不会下探；固定槽位底对齐再加一道保险）：
+        // 选中生长走缓出（零过冲，不会下探；固定槽位底对齐再加一道保险）：
         // 滚动中实时选中每掠过一张卡切换一次，瞬时切换会让两卡之间整段 124pt 瞬移,
         // 表现为顿挫;缓动让相邻卡平滑滑移。减弱动态下回到瞬时切换。
+        // 滚动中换短曲线：换卡约 29ms 一次，0.12s 的生长在 60Hz 下每 1.9 帧就被重定向、
+        // 全程走不完（实测见 DS.Anim.cardGrowScrolling 注释）。
         .animation(
-            MotionPolicy.prefersReducedMotion ? nil : DS.Anim.cardGrow,
+            MotionPolicy.prefersReducedMotion
+                ? nil
+                : (isScrolling ? DS.Anim.cardGrowScrolling : DS.Anim.cardGrow),
             value: isSelected
         )
         .opacity(isEntered ? 1 : 0)

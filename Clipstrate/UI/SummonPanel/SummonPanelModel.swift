@@ -42,7 +42,10 @@ final class SummonPanelModel: ObservableObject {
     /// 上一次被接受的悬停选择时的指针位置，供 hoverSelect 的位移判据用。
     private var lastHoverLocation: CGPoint?
     /// 滚动进行中：滚动是明确的浏览意图，悬停实时选中；位移判据只在非滚动时生效。
-    private var isScrolling = false
+    /// 对外可见（@Published）是因为卡片生长曲线要按它切档：滚动中换卡频率远高于
+    /// 生长时长，必须换短曲线才追得上（见 DS.Anim.cardGrowScrolling）。
+    /// 只在 idle↔scrolling 翻转时发布，一次手势两次，不是高频源。
+    @Published private(set) var isScrolling = false
 
     init(
         historyStore: HistoryStore?,
@@ -188,9 +191,11 @@ final class SummonPanelModel: ObservableObject {
         focus = .card
     }
 
-    /// 卡片条滚动相位（onScrollPhaseChange）：滚动中悬停实时选中，这里只维护
-    /// isScrolling，供 hoverSelect 的位移判据区分「滚动扫卡」与「被动悬停」。
+    /// 卡片条滚动相位（onScrollPhaseChange）：滚动中悬停实时选中，这里维护
+    /// isScrolling，供 hoverSelect 的位移判据区分「滚动扫卡」与「被动悬停」，
+    /// 并给卡片生长切换短曲线（DS.Anim.cardGrowScrolling）。
     func scrollPhaseChanged(isScrolling scrolling: Bool) {
+        guard isScrolling != scrolling else { return }   // 等值短路：不给相同相位起发布
         isScrolling = scrolling
     }
 
