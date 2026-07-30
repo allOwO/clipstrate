@@ -136,7 +136,8 @@ final class ChopOverlayModel {
         case let .entity(number):
             guard entities.indices.contains(number - 1) else { return .none }
             let value = entities[number - 1].value
-            return .copy(text: value, toast: "已复制：\(value) ✓")
+            // 复制成功不提示（与面板选条一致）：分词层随即关闭本身就是完成信号。
+            return .copy(text: value, toast: nil)
 
         case .copySelection:
             let value = selectedText(separator: separator)

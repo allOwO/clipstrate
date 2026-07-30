@@ -73,10 +73,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     action: action
                 )
                 switch result {
+                // 复制成功不提示：面板已收起、剪贴板已就绪，胶囊只是重复告知（也遮挡视线）。
+                // 仅在「需要用户补一步 ⌘V」或彻底失败时才提示。
                 case .copiedNeedsManualPaste: ToastPresenter.shared.show("已复制，请 ⌘V 粘贴")
-                case .copied: ToastPresenter.shared.show("已复制 ✓")
                 case .unavailable: ToastPresenter.shared.show("无法粘贴该条目")
-                case .pasted: break
+                case .copied, .pasted: break
                 }
             }
         }
@@ -118,8 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // 点击条目 = 复制到剪贴板顶部（仅复制，不合成 ⌘V）。
                 let result = await paste.perform(item: item, plainText: Settings.plainTextDefault, action: .copy)
                 switch result {
-                case .copied, .pasted: ToastPresenter.shared.show("已复制 ✓")
-                case .unavailable, .copiedNeedsManualPaste: ToastPresenter.shared.show("无法复制该条目")
+                // 同上：复制成功静默，只报失败。
+                case .copied, .pasted, .copiedNeedsManualPaste: break
+                case .unavailable: ToastPresenter.shared.show("无法复制该条目")
                 }
             }
         }

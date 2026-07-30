@@ -69,7 +69,8 @@ final class ChopOverlayModelTests: XCTestCase {
         XCTAssertFalse(model.isLoading)
     }
 
-    func testNumberCopiesMatchingEntityWithToast() {
+    /// 数字键复制实体值，且不带 toast（复制成功一律静默，见 ChopOverlayModel）。
+    func testNumberCopiesMatchingEntitySilently() {
         let entities = [
             makeEntity(value: "first", location: 0),
             makeEntity(value: "second", location: 6)
@@ -78,7 +79,7 @@ final class ChopOverlayModelTests: XCTestCase {
 
         XCTAssertEqual(
             model.perform(.entity(number: 2)),
-            .copy(text: "second", toast: "已复制：second ✓")
+            .copy(text: "second", toast: nil)
         )
         XCTAssertEqual(model.perform(.entity(number: 0)), .none)
         XCTAssertEqual(model.perform(.entity(number: 9)), .none)
