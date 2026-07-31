@@ -73,10 +73,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     action: action
                 )
                 switch result {
+                // 复制成功不提示：面板已收起、剪贴板已就绪，胶囊只是重复告知（也遮挡视线）。
+                // 仅在「需要用户补一步 ⌘V」或彻底失败时才提示。
                 case .copiedNeedsManualPaste: ToastPresenter.shared.show("已复制，请 ⌘V 粘贴")
-                case .copied: ToastPresenter.shared.show("已复制 ✓")
                 case .unavailable: ToastPresenter.shared.show("无法粘贴该条目")
-                case .pasted: break
+                case .copied, .pasted: break
                 }
             }
         }
@@ -118,8 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // 点击条目 = 复制到剪贴板顶部（仅复制，不合成 ⌘V）。
                 let result = await paste.perform(item: item, plainText: Settings.plainTextDefault, action: .copy)
                 switch result {
-                case .copied, .pasted: ToastPresenter.shared.show("已复制 ✓")
-                case .unavailable, .copiedNeedsManualPaste: ToastPresenter.shared.show("无法复制该条目")
+                // 同上：复制成功静默，只报失败。
+                case .copied, .pasted, .copiedNeedsManualPaste: break
+                case .unavailable: ToastPresenter.shared.show("无法复制该条目")
                 }
             }
         }
@@ -184,8 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startJanitor(_ janitor: RetentionJanitor) {
         janitorTask = Task {
             while !Task.isCancelled {
-                do { try await janitor.runOnce() }
-                catch { Log.store.error("retention 清理失败：\(String(describing: error), privacy: .public)") }
+                do {
+                    try await janitor.runOnce()
+                    // 清理删掉条目同样让面板快照过期（捕获之外的另一条过期路径）。
+                    await MainActor.run { [weak self] in self?.panelController?.refreshSnapshotIfHidden() }
+                } catch { Log.store.error("retention 清理失败：\(String(describing: error), privacy: .public)") }
                 try? await Task.sleep(for: .seconds(3600))
             }
         }
@@ -209,6 +214,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 堆栈开启时入栈（enqueue 内部判 enabled）；文本条目再做实体检测弹 EntityHUD（01 §4.1 B / §10）。
     private func handleCaptured(_ item: ClipItem) {
         Task { [clipboardStack] in await clipboardStack.enqueue(item) }
+        // 面板隐藏时顺手刷新它的快照：否则这条新条目要等下次唤出、在面板已经显示出来
+        // 之后才补进去，表现为窗口改尺寸 + 新卡重放进场动画（长时间不用后尤其明显）。
+        panelController?.refreshSnapshotIfHidden()
         if Settings.backupAutoICloud, let coordinator = automaticBackupCoordinator {
             Task { await coordinator.schedule(.history) }
         }

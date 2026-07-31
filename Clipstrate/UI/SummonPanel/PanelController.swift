@@ -128,6 +128,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         previousApp?.activate()
     }
 
+    /// 隐藏期间保持快照新鲜，让唤出时的刷新退化成空操作（否则窗口会在用户眼前改尺寸、
+    /// 新卡重放进场动画；详见 SummonPanelModel.refreshWhileHidden）。
+    func refreshSnapshotIfHidden() {
+        guard !isVisible else { return }
+        model.refreshWhileHidden()
+    }
+
     func setChopOverlayBuilder(_ builder: @escaping ChopOverlayBuilder) {
         model.setOverlayBuilder(builder)
     }

@@ -60,6 +60,7 @@ struct SummonPanelView: View {
                                         blobStore: model.blobStore,
                                         presentationEpoch: model.presentationEpoch,
                                         isPanelPresented: model.isPanelPresented,
+                                        isScrolling: model.isScrolling,
                                         onActivate: { model.activateCard(at: index) },
                                         onPlainText: { model.activateAction(0) },
                                         onChop: { model.activateAction(1) },
@@ -69,7 +70,11 @@ struct SummonPanelView: View {
                                     // 布局与命中，选中卡不参与；挂在槽位 frame 之内、卡片
                                     // 视觉组合之外，缩放的是整张玻璃卡。指针在条内按光标算,
                                     // 不在时凸形按与选中卡的档位距离跟着键盘走。
-                                    .waveMagnify(model.wave, distanceFromSelection: abs(index - model.selectedIndex))
+                                    .waveMagnify(
+                                        model.wave,
+                                        distanceFromSelection: abs(index - model.selectedIndex),
+                                        isScrolling: model.isScrolling
+                                    )
                                     // 固定高度底对齐槽位：卡片长大只在槽内向上发生，
                                     // 不改变行高、不引起纵向重排或向下过冲。
                                     .frame(height: DS.Metrics.cardSelected.height, alignment: .bottom)
@@ -279,6 +284,8 @@ private struct SummonCardView: View {
     let blobStore: BlobStore?
     let presentationEpoch: Int
     let isPanelPresented: Bool
+    /// 滚动中换卡频率远高于生长时长，生长曲线要切短档（DS.Anim.cardGrowScrolling）。
+    let isScrolling: Bool
     let onActivate: () -> Void
     let onPlainText: () -> Void
     let onChop: () -> Void
@@ -288,6 +295,13 @@ private struct SummonCardView: View {
 
     private var size: CGSize {
         isSelected ? DS.Metrics.cardSelected : DS.Metrics.cardUnselected
+    }
+
+    /// 选中描边的透明度：未选中为 0（视图仍在，见 overlay 处注释）；
+    /// 动作层聚焦时淡下去，把强调让给动作胶囊自己的描边。
+    private var ringOpacity: Double {
+        guard isSelected else { return 0 }
+        return isActionLayer ? DS.Metrics.actionLayerRingOpacity : 1
     }
 
     var body: some View {
@@ -311,19 +325,28 @@ private struct SummonCardView: View {
             cornerRadius: DS.Metrics.cardCornerRadius,
             interactive: true
         )
+        // 描边**恒定存在**、只动透明度——绝不要写成 `if isSelected { 描边 }`。
+        // 条件内容会走插入/移除过渡，而移除的语义是「把视图从布局里摘出去、按它最后一次
+        // 的几何继续画」：卡片这边 252×196 缩回 128×126、卡片条重排左移，那圈描边却留在
+        // 旧的选中态尺寸和旧位置上淡出 0.12s，于是比卡片大一圈、位置对不上，多出的 124pt
+        // 还探到下一张卡底下被压住。滚动中换卡 29ms 一次而淡出要 120ms，任一时刻有约 4 圈
+        // 这样的孤立描边在飞（2026-07-30 实测截图）。恒定存在则永远在布局里，严格跟着
+        // frame 动画走，只有 alpha 在变。
         .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous)
-                    .stroke(DS.Colors.selectionRing, lineWidth: DS.Metrics.selectionRingWidth)
-                    .opacity(isActionLayer ? DS.Metrics.actionLayerRingOpacity : 1)
-            }
+            RoundedRectangle(cornerRadius: DS.Metrics.cardCornerRadius, style: .continuous)
+                .stroke(DS.Colors.selectionRing, lineWidth: DS.Metrics.selectionRingWidth)
+                .opacity(ringOpacity)
         }
         // 不再叠显式 shadow：glassEffect 自带四周均匀的 Liquid Glass 投影。
-        // 选中生长走 DS.Anim.cardGrow 缓出（零过冲，不会下探；固定槽位底对齐再加一道保险）：
+        // 选中生长走缓出（零过冲，不会下探；固定槽位底对齐再加一道保险）：
         // 滚动中实时选中每掠过一张卡切换一次，瞬时切换会让两卡之间整段 124pt 瞬移,
         // 表现为顿挫;缓动让相邻卡平滑滑移。减弱动态下回到瞬时切换。
+        // 滚动中换短曲线：换卡约 29ms 一次，0.12s 的生长在 60Hz 下每 1.9 帧就被重定向、
+        // 全程走不完（实测见 DS.Anim.cardGrowScrolling 注释）。
         .animation(
-            MotionPolicy.prefersReducedMotion ? nil : DS.Anim.cardGrow,
+            MotionPolicy.prefersReducedMotion
+                ? nil
+                : (isScrolling ? DS.Anim.cardGrowScrolling : DS.Anim.cardGrow),
             value: isSelected
         )
         .opacity(isEntered ? 1 : 0)
@@ -614,10 +637,12 @@ private struct ActionCapsule: View {
         .buttonStyle(.plain)
         .background(isFocused ? DS.Colors.accent.opacity(0.16) : .clear, in: Capsule())
         .glassSurface(cornerRadius: 999, interactive: true)
+        // 同卡片描边：恒定存在、只动透明度，不用条件内容（见 SummonCardView 的 overlay 注释）。
+        // 胶囊尺寸不随聚焦变化，所以目前看不出错位，但机制一样，不留这个坑。
         .overlay {
-            if isFocused {
-                Capsule().stroke(DS.Colors.selectionRing, lineWidth: 2)
-            }
+            Capsule()
+                .stroke(DS.Colors.selectionRing, lineWidth: 2)
+                .opacity(isFocused ? 1 : 0)
         }
         .animation(.easeInOut(duration: DS.Anim.ringFadeDuration), value: isFocused)
     }

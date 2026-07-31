@@ -48,6 +48,15 @@ enum DS {
         /// 时长与波浪交接共用本常量：0.15s 时生长比波浪跟随（0.08s）慢半拍、
         /// 且与 0.12s 的交接曲线错位（同一张卡高度变化打架），收敛到 0.12s 对齐。
         static let cardGrow = Animation.easeOut(duration: 0.12)
+        /// 滚动中换卡专用的短生长曲线（2026-07-30「60Hz 副屏卡顿」实测定标，见
+        /// SummonPanelScreenPerfDiagTests）。滚动时换卡频率 = 滚动速度 / 卡节距，
+        /// 实测约 30~35 次/秒（≈29ms 一次）；0.12s 的生长要 7 个 60Hz 帧才走完，
+        /// 于是每 1.9 帧就被下一次换卡重定向——选中卡在整段滚动里从没到过 252pt 宽，
+        /// 「凸起」永远在追光标，体感即卡顿（120Hz 下每次换卡有 3.5 帧，同样没走完
+        /// 但采样密一倍，看着还顺）。缩到 0.05s（60Hz 约 3 帧）让它在下一次换卡前
+        /// 基本到位；仍是缓出，不是当年被否掉的「瞬时 124pt 瞬移」。
+        /// 非滚动场景（键盘导航 / 静止悬停）不churn，继续用拍板的 cardGrow。
+        static let cardGrowScrolling = Animation.easeOut(duration: 0.05)
         /// 进场：自基线上浮 20pt + scale 0.94→1，逐张错开 22ms（收紧后更利落）。
         static let entranceRise: CGFloat = 20
         static let entranceScale: CGFloat = 0.94
