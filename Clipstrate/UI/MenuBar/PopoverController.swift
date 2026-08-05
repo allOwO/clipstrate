@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 final class PopoverController: NSObject, NSWindowDelegate {
     private let panel: NSPanel
-    private let model: PopoverModel
+    let model: PopoverModel                          // internal：测试观察加载状态
     private var globalClickMonitor: Any?
     private(set) var isVisible = false
 
@@ -71,6 +71,9 @@ final class PopoverController: NSObject, NSWindowDelegate {
             origin.y = max(origin.y, visible.minY + 8)
         }
         panel.setFrameOrigin(origin)
+        // 面板常驻复用，视图的 `.task` 一生只跑一次（仅预热）：每次显示都在此重载首页与统计，
+        // 否则第二次打开起只剩 hide() 裁剪后的旧列表与过期统计。
+        Task { await model.reload() }
         panel.orderFrontRegardless()
         panel.makeKey()                              // 允许搜索框接收键盘输入
         installMonitors()
@@ -82,7 +85,7 @@ final class PopoverController: NSObject, NSWindowDelegate {
         removeMonitors()
         isVisible = false
         panel.orderOut(nil)
-        model.releaseItems()          // 释放累积分页，关闭期间不常驻
+        model.trimToFirstPage()       // 裁掉累积分页，关闭期间只留首页的量
     }
 
     /// App 终止时显式拆除（零泄露清单）。

@@ -24,6 +24,7 @@ struct PopoverView: View {
         .frame(width: Self.width, height: Self.height)
         .glassSurface(cornerRadius: 18)
         .task {
+            // 面板常驻复用，这里一生只跑一次，仅作启动预热；每次显示的重载在 PopoverController.show()。
             await model.reload()
             searchFocused = true
         }
