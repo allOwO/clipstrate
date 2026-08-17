@@ -61,8 +61,16 @@ final class SummonPanelModel: ObservableObject {
         items = Array(initialItems.prefix(SummonPanelLayout.maximumItemCount))
     }
 
-    func prewarm() {
+    /// 启动预热：先把首批快照读进来。`then` 在首批落地后回调一次，供 Controller 接着
+    /// 做「离屏渲染一帧」——要等快照到位，预热帧才渲染的是真卡片（文本布局、图标、玻璃），
+    /// 空面板预热等于白热。无 historyStore（单测/占位）时 refreshTask 为 nil，立即回调。
+    func prewarm(then completion: (@MainActor () -> Void)? = nil) {
         refresh()
+        guard let completion else { return }
+        Task { [weak self] in
+            await self?.refreshTask?.value
+            completion()
+        }
     }
 
     /// 隐藏期间保持快照新鲜。`show()` 是同步的，`beginPresentation()` 里的 refresh 是

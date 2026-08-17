@@ -17,6 +17,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// 粘贴前需把它重新激活，合成的 ⌘V 才会落回用户原来的输入框。
     private var previousApp: NSRunningApplication?
     private(set) var isVisible = false
+    /// 启动预热帧是否已渲染过（见 prewarmRender）。只跑一次。
+    private(set) var isPrewarmed = false
 
     override convenience init() {
         self.init(historyStore: nil, blobStore: nil, chopOverlayBuilder: nil)
@@ -54,9 +56,38 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.onLayoutChange = { [weak self] in self?.updateLayout() }
         model.onIMEInputRequested = { [weak self] in self?.activateIMEInput() }
         model.onRequestClose = { [weak self] in self?.hide() }
-        model.prewarm()
-        // 预热：先离屏渲染一次，唤出时只需定位 + 前置
+        // 预热：读首批快照，落地后再离屏渲染一帧（见 prewarmRender）。
+        model.prewarm { [weak self] in self?.prewarmRender() }
         panel.orderOut(nil)
+    }
+
+    /// 真·预热：把面板全透明、不可点地 order-in 一帧，逼 SwiftUI 建视图树、Core Animation
+    /// 建图层、Liquid Glass 完成首次背景采样，然后立刻收起。
+    ///
+    /// 此前这里只有一句 `panel.orderOut(nil)`——对一个从未 order-in 过的窗口是空操作，
+    /// 于是「首帧」的全部成本都落在用户按下 ⌥V 的那一次 `orderFrontRegardless()` 上，
+    /// 表现为「冷启后第一次唤出卡，之后丝滑」。实测（SummonPanelFirstShowDiagTests）
+    /// 同一面板首帧 16.8ms、后续 0.3–0.5ms；预热后首次唤出降到 4.1ms。真机上还要叠
+    /// 玻璃在 WindowServer 侧的首次合成，只会更贵。
+    ///
+    /// 不挪到屏外做：离屏窗口的合成器工作量不完整，玻璃采样预热不到。alpha 0 + 忽略鼠标
+    /// 这一帧用户既看不见也点不到。预热帧 `isPanelPresented` 仍是 false，卡片按
+    /// `animate: false` 直接落位，不会白跑一遍进场 spring；唤出时 cardID 带的 epoch 变了，
+    /// 卡片照常重建并播进场动画。
+    private func prewarmRender() {
+        guard !isPrewarmed else { return }
+        isPrewarmed = true
+        // 用户抢在预热之前就按了 ⌥V：首帧已经由 show() 付掉，不必再渲染一帧。
+        guard !isVisible else { return }
+        panel.alphaValue = 0
+        panel.ignoresMouseEvents = true
+        panel.orderFrontRegardless()
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.displayIfNeeded()
+        CATransaction.flush()
+        panel.orderOut(nil)
+        panel.ignoresMouseEvents = false
+        panel.alphaValue = 1
     }
 
     func toggle() { isVisible ? hide() : show() }
