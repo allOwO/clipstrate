@@ -40,12 +40,34 @@ final class CardAssetLoaderTests: XCTestCase {
     }
 
     func testRejectsOverLimitRichText() async {
-        // byteSize 超 2MB → 直接降级为不渲染，不去读 blob。
+        // 卡片预览超过 64KB → 直接降级为纯文本摘要，不去读 blob。
         let item = ClipItem(kind: .text, isRich: true, plainText: "x",
                             richType: "rtf", blobPath: "\(UUID().uuidString).rtf",
-                            contentHash: "r2", byteSize: 3 * 1024 * 1024)
+                            contentHash: "r2", byteSize: 64 * 1024 + 1)
         let result = await CardAssetLoader.shared.richText(for: item, store: blobs)
-        XCTAssertNil(result, "超 2MB 富文本应降级为不渲染")
+        XCTAssertNil(result, "超过卡片富文本预览上限应降级为不渲染")
+    }
+
+    func testRichTextPreviewIsBoundedToListPreviewLength() async throws {
+        let name = "\(UUID().uuidString).rtf"
+        let full = String(repeating: "x", count: HistoryStore.previewTextLength + 1_000)
+        _ = try blobs.writeBlob(makeRTF(full), name: name)
+        let item = ClipItem(
+            kind: .text,
+            isRich: true,
+            plainText: String(full.prefix(HistoryStore.previewTextLength)),
+            richType: "rtf",
+            blobPath: name,
+            contentHash: "r-preview",
+            byteSize: full.utf8.count
+        )
+
+        let result = try XCTUnwrap(await CardAssetLoader.shared.richText(for: item, store: blobs))
+        XCTAssertEqual(
+            String(result.characters).count,
+            HistoryStore.previewTextLength,
+            "富文本卡片也只能把列表预览长度交给 SwiftUI 布局"
+        )
     }
 
     func testNilForNonRichText() async {

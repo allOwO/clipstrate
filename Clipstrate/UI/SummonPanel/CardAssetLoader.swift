@@ -11,7 +11,11 @@ final class CardAssetLoader: @unchecked Sendable {
 
     private let thumbnails = NSCache<NSString, CGImage>()
     private let richDocuments = NSCache<NSString, NSAttributedString>()
-    private static let maximumRichBytes = 2 * 1024 * 1024
+    /// 卡片只展示 4–6 行，没必要为此解析整份富文本。大段 JSON 从 TextEdit、浏览器等
+    /// 来源复制时常会同时带 RTF/HTML；若仍按 2MB 上限完整解析，虽在后台执行，CPU 争用和
+    /// 随后的 SwiftUI 文本布局仍会让 ⌥V 明显掉帧。原始富文本仍完整落盘、粘贴时按需读取；
+    /// 此限制只影响卡片的格式化预览。
+    private static let maximumRichPreviewBytes = 64 * 1024
     /// 内存压力监听：warning/critical 时清空图片与富文本缓存，保证峰值回落（性能预算）。
     private var pressureSource: DispatchSourceMemoryPressure?
 
@@ -54,15 +58,15 @@ final class CardAssetLoader: @unchecked Sendable {
     }
 
     func richText(for item: ClipItem, store: BlobStore) async -> AttributedString? {
-        guard item.byteSize <= Self.maximumRichBytes,
+        guard item.byteSize <= Self.maximumRichPreviewBytes,
               let name = item.blobPath,
               let richType = item.richType,
               richType == "rtf" || richType == "html" else { return nil }
         if let cached = richDocuments.object(forKey: name as NSString) {
             return AttributedString(cached)
         }
-        return await Task.detached(priority: .userInitiated) { [richDocuments] in
-            guard let data = try? store.readBlob(name), data.count <= Self.maximumRichBytes else { return nil }
+        return await Task.detached(priority: .utility) { [richDocuments] in
+            guard let data = try? store.readBlob(name), data.count <= Self.maximumRichPreviewBytes else { return nil }
             let documentType: NSAttributedString.DocumentType = richType == "rtf" ? .rtf : .html
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
                 .documentType: documentType,
@@ -71,7 +75,15 @@ final class CardAssetLoader: @unchecked Sendable {
             guard let document = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
                 return nil
             }
-            let bounded = NSMutableAttributedString(attributedString: document)
+            // 列表查询也只取 512 字符纯文本预览；富文本分支须遵守相同上限，否则
+            // `Text(richText).lineLimit(...)` 仍可能为整份文档做布局。
+            let previewRange = NSRange(
+                location: 0,
+                length: min(document.length, HistoryStore.previewTextLength)
+            )
+            let bounded = NSMutableAttributedString(
+                attributedString: document.attributedSubstring(from: previewRange)
+            )
             var attachmentRanges: [NSRange] = []
             bounded.enumerateAttribute(.attachment, in: NSRange(location: 0, length: bounded.length)) { value, range, _ in
                 if value != nil { attachmentRanges.append(range) }
@@ -79,7 +91,11 @@ final class CardAssetLoader: @unchecked Sendable {
             for range in attachmentRanges.reversed() {
                 bounded.replaceCharacters(in: range, with: "[附件]")
             }
-            richDocuments.setObject(bounded, forKey: name as NSString, cost: min(Self.maximumRichBytes, bounded.length * 8))
+            richDocuments.setObject(
+                bounded,
+                forKey: name as NSString,
+                cost: min(Self.maximumRichPreviewBytes, bounded.length * 8)
+            )
             return AttributedString(bounded)
         }.value
     }
